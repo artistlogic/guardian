@@ -2,6 +2,9 @@
 
 > **Watch a wallet's outgoing token transfers. When one exceeds the threshold,
 > Reactive executes an on-chain alert on the destination chain — no server, no key hosting.**
+>
+> **中文摘要**：监听 Sepolia 上指定钱包的 ERC-20 转出事件，单笔金额超过阈值时，
+> Reactive 自动跨链回调到目标链并记录一条 Alert；无需自建服务器，无需托管私钥。
 
 ## 1. What it is
 
