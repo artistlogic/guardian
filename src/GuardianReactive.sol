@@ -4,6 +4,7 @@ pragma solidity ^0.8.29;
 import { AbstractReactive } from "./reactive/base/AbstractReactive.sol";
 import { IReactive } from "./reactive/interfaces/IReactive.sol";
 import { ISystemContract } from "./reactive/interfaces/ISystemContract.sol";
+import { GuardianCallback } from "./GuardianCallback.sol";
 
 /// @title GuardianReactive
 /// @notice 监听源链上"被守护地址"转出代币的事件；单笔金额超过阈值时，
@@ -79,9 +80,16 @@ contract GuardianReactive is AbstractReactive {
         lastValue = value;
         lastOriginTx = log_.txHash;
 
-        // 第一个参数留给代理注入「发起回调的 reactive 地址」
-        bytes memory payload =
-            abi.encode(address(0), log_.chainId, log_.txHash, value, alerts);
+        // 第一个参数留给代理注入「发起回调的 reactive 地址」；
+        // 必须带 4 字节函数选择器，否则目标合约无法分发调用
+        bytes memory payload = abi.encodeWithSelector(
+            GuardianCallback.onAlert.selector,
+            address(0),
+            log_.chainId,
+            log_.txHash,
+            value,
+            alerts
+        );
 
         SYSTEM.requestCallbackV_1_0(
             ISystemContract.CallbackConfiguration_V_1_0({

@@ -22,9 +22,32 @@ The whole point: **alerting is done on-chain, by the network, not by a bot you m
 
 | Step | Transaction |
 |---|---|
-| ① Origin event (Transfer) | `<PENDING>` |
-| ② Reactive `react()` (Lasna) | `<PENDING>` |
-| ③ Destination callback (`Alert`) | `<PENDING>` |
+| ① Origin event (D3RT `Transfer`, Sepolia) | https://eth-sepolia.blockscout.com/tx/0x1ba40219983167c32c3b8deb9017c57fcb1f38fa6bbd5b582f0429d495f1b407 |
+| ② Reactive `react()` (Lasna) | https://lasna.reactscan.net/tx/0x74c7cb0e973156073c683486d13a57bf72346d2bff4e9199a37d33a1a3c1b342 |
+| ③ Destination callback (`Alert`, Sepolia) | https://eth-sepolia.blockscout.com/tx/0x53dcc37d4f98662ba1672d34b958af6b126245038fa15953de3d517bece8e4cd |
+
+**Deployed contracts**
+
+| Contract | Chain | Address |
+|---|---|---|
+| GuardianReactive | Lasna (5318007) | `0x292b87c5df8d322de30e1402801f78f2e8563405` |
+| GuardianCallback | Sepolia (11155111) | `0x8068fbf573fb522748f7786b485595b531666ec3` |
+| Watched token (D3RT) | Sepolia | `0x259d2fb64231d85e639d1074fa724bcdf29a4ed9` |
+
+**Readings after the run:** `GuardianReactive.alerts = 1`, `GuardianCallback.count = 1`.
+
+```text
+time ──────────────────────────────────────────────────────────────▶
+
+watched wallet            Sepolia        Lasna                    Sepolia
+     │  transfer 10 D3RT     │              │                        │
+     ├──────────────────────▶│ Transfer     │                        │
+     │                       │  ──event──▶  │ react(): value ≥ 5 D3RT│
+     │                       │              │  requestCallbackV_1_0  │
+     │                       │              ├───────callback───────▶│ onAlert()
+     │                       │              │                        │ emit Alert
+     │                       │              │                        │ count = 1
+```
 
 ## 3. How it works
 
