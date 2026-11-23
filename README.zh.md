@@ -77,7 +77,7 @@ cast send 0x8888888888888888888888888888888888888888 "depositTo(address)" <合�
 cast call <合约> "alerts()(uint256)"
 ```
 
-## 测试
+## 6. 测试
 
 ```bash
 forge test -vv   # 7 passed
@@ -92,14 +92,6 @@ forge test -vv   # 7 passed
 | `test_PerAlertCap` | 单笔封顶 |
 | `test_TotalCapStops` | 累计到顶停止 |
 | `test_PauseStops` | 暂停后不再处理 |
-
-## 6. 下一步
-
-```text
-D11  补充边界测试
-D12  一键复现部署脚本 + README 打磨
-D13  提交包：仓库、合约、交易哈希、演示视频
-```
 
 ## 7. 安全说明
 

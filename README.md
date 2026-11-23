@@ -91,7 +91,7 @@ cast send 0x8888888888888888888888888888888888888888 "depositTo(address)" <contr
 cast call <contract> "alerts()(uint256)"
 ```
 
-## Tests
+## 6. Tests
 
 ```bash
 forge test -vv
@@ -107,14 +107,6 @@ forge test -vv
 | `test_PerAlertCap` | per-alert cap |
 | `test_TotalCapStops` | total cap stops processing |
 | `test_PauseStops` | pause stops processing |
-
-## 6. Next steps
-
-```text
-D11  More tests / edge cases
-D12  One-command reproducible deploy + README polish
-D13  Submission package: repo, contracts, tx hashes, demo video
-```
 
 ## 7. Safety
 
