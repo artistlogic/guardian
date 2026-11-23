@@ -7,14 +7,17 @@ import { ISystemContract } from "./reactive/interfaces/ISystemContract.sol";
 import { GuardianCallback } from "./GuardianCallback.sol";
 
 /// @title GuardianReactive
-/// @notice 监听源链上"被守护地址"转出代币的事件；单笔金额超过阈值时，
-///         跨链回调到目标链的记录合约，留下可查的 Alert。
-/// @dev    三层保护：
-///         ① 只在该触发时触发：订阅锁定 from = 被守护地址；react 内再判阈值
-///         ② 同一事件不重复：按 origin txHash 去重
-///         ③ 金额上限：单笔记录上限 + 累计记录上限
+/// @notice Watches ERC-20 transfers out of a guarded wallet. When a single
+///         transfer reaches the threshold, it requests a cross-chain callback
+///         that records an on-chain alert on the destination chain.
+/// @dev    Three layers of protection:
+///         1) Trigger only when it should: subscription is narrowed to
+///            `from == watch`, and `react()` re-checks source, opCode,
+///            pause flag and threshold.
+///         2) Idempotency: a source txHash is processed at most once.
+///         3) Spend caps: per-alert cap and total cap.
 contract GuardianReactive is AbstractReactive {
-    /// @notice ERC-20 Transfer(address indexed from, address indexed to, uint256 value)
+    /// @notice keccak256("Transfer(address,address,uint256)")
     uint256 private constant TRANSFER_TOPIC_0 =
         0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef;
 
@@ -36,7 +39,7 @@ contract GuardianReactive is AbstractReactive {
     uint256 public lastOriginTx;
     bool public paused;
 
-    /// @notice 已经处理过的源交易哈希（防重复）
+    /// @notice Source transaction hashes already processed (idempotency).
     mapping(uint256 => bool) public seen;
 
     event RecipientSet(address indexed recipient);
@@ -66,7 +69,7 @@ contract GuardianReactive is AbstractReactive {
         destChainId = destChainId_;
         gasLimit = gasLimit_;
 
-        // 保护 ①：只订阅「被守护地址作为 from」的 Transfer
+        // Protection 1: only transfers where `from` is the guarded wallet.
         SYSTEM.subscribe(
             originChainId_,
             token_,
@@ -79,20 +82,20 @@ contract GuardianReactive is AbstractReactive {
 
     /// @inheritdoc IReactive
     function react(LogRecord calldata log_) external onlySystem {
-        // 保护 ①：来源与类型校验
+        // Protection 1: source and event type checks.
         if (log_.contractAddress != token) return;
         if (log_.opCode != 3) return;
         if (paused) return;
         if (alerts >= maxAlerts) return;
         if (recipient == address(0)) return;
 
-        // 保护 ②：同一笔源交易只处理一次
+        // Protection 2: process each source transaction once.
         if (seen[log_.txHash]) return;
 
         uint256 value = abi.decode(log_.data, (uint256));
         if (value < threshold) return;
 
-        // 保护 ③：金额封顶 + 累计封顶
+        // Protection 3: per-alert and total value caps.
         uint256 effective = value;
         if (value > maxValuePerAlert) {
             effective = maxValuePerAlert;
@@ -106,6 +109,8 @@ contract GuardianReactive is AbstractReactive {
         lastValue = effective;
         lastOriginTx = log_.txHash;
 
+        // First argument is a placeholder overwritten by the proxy with the
+        // address of the reactive contract that requested the callback.
         bytes memory payload = abi.encodeWithSelector(
             GuardianCallback.onAlert.selector,
             address(0),
@@ -131,14 +136,14 @@ contract GuardianReactive is AbstractReactive {
         }
     }
 
-    /// @notice 绑定目标链回调合约（只能由 owner 设置）
+    /// @notice Binds the destination callback contract (owner only).
     function setRecipient(address recipient_) external {
         require(msg.sender == owner, "not owner");
         recipient = recipient_;
         emit RecipientSet(recipient_);
     }
 
-    /// @notice 紧急暂停：主动退订，之后不再处理事件
+    /// @notice Emergency stop: unsubscribe and ignore further events.
     function pause() external {
         require(msg.sender == owner, "not owner");
         paused = true;

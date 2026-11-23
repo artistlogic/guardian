@@ -3,8 +3,7 @@
 > **Watch a wallet's outgoing token transfers. When one exceeds the threshold,
 > Reactive executes an on-chain alert on the destination chain — no server, no key hosting.**
 >
-> **中文摘要**：监听 Sepolia 上指定钱包的 ERC-20 转出事件，单笔金额超过阈值时，
-> Reactive 自动跨链回调到目标链并记录一条 Alert；无需自建服务器，无需托管私钥。
+> [中文说明 / Chinese docs](README.zh.md)
 
 ## 1. What it is
 
@@ -56,16 +55,16 @@ watched wallet            Sepolia        Lasna                    Sepolia
 - **Threshold** is checked inside `react()`; below-threshold transfers `return` silently (reverts are charged too).
 - **Callback** carries `(reactive, originChainId, originTxHash, value, alertIndex)`; the first field is injected by the proxy.
 - **Two locks** on the callback: `onlyServiceProvider` (only the callback proxy) and `onlyCallbackSender` (only our reactive contract).
-- **Runaway protection**: `maxAlerts` auto-unsubscribes; owner can `pause()`; contract keeps a balance so it never goes into debt.
+- **Runaway protection**:
+  - only transfers from the watched wallet trigger (subscription filter + in-contract checks),
+  - each source txHash is processed once (`seen` mapping),
+  - per-alert value cap and total value cap; `maxAlerts` auto-unsubscribes; owner can `pause()`.
 
 ## 4. Try it
 
 ```bash
-# 1) build
 forge build
-
-# 2) deploy + fund + trigger + collect evidence (see script/deploy.sh in the repo)
-bash script/deploy.sh
+forge test -vv
 ```
 
 ## 5. What we don't solve
@@ -74,46 +73,47 @@ bash script/deploy.sh
 - We do not move funds automatically in this version (that needs a pre-approved allowance and is a separate design).
 - Enterprise-grade controls (multisig, whitelists, approval workflows, compliance screening) are **out of scope**; see §6 for how they would compose.
 
-## 5b. Failure modes / 出问题怎么办
+## 5b. Failure modes
 
-| 出问题 | 会发生什么 | 怎么处理 |
+| Failure | What happens | How to recover |
 |---|---|---|
-| **Reactive 合约余额用完** | `reserves` 扣完 → `debt > 0` → 系统**静默停服**，`react()` 不再被调用（链上不会报错，只是"没反应"） | 立刻 `depositTo(合约地址)` 充值把 debt 清零；建议持续监控 `debt()` 与 `balance`，留余量 |
-| **目标链回调失败** | 代理仍**照常收费**并发 `CallbackFailure` 事件；目标链 `count` 不增加 | 查原因：目标合约 revert / `gasLimit` 太小 / 回调合约欠费；处理后重新触发一次源事件 |
-| **同一个事件被重复推送** | 有 `seen[txHash]` 去重，第二次直接 `return`，不会重复执行 | 无需处理 |
-| **误触发（噪音事件）** | 订阅锁定 `from = 被守护地址`，`react()` 内再判断阈值；不满足直接 `return`（不 revert，回滚也收费） | 调整阈值或换过滤条件 |
-| **单笔/累计金额过大** | 单笔按 `maxValuePerAlert` 封顶；累计到 `maxTotalValue` 后停止并退订 | 重新部署并调整上限 |
-| **有人伪造回调** | 代理注入地址被 `onlyCallbackSender` 校验；非代理调用被 `onlyServiceProvider` 拒绝 | 无需处理 |
+| **Reactive contract runs out of funds** | `reserves` drained → `debt > 0` → the system **silently stops** calling `react()` (no error, it just goes quiet) | Top up with `depositTo(contract)` to clear debt; monitor `debt()` and balance |
+| **Destination callback fails** | Proxy still charges and emits `CallbackFailure`; `count` does not increase | Check target revert / `gasLimit` / callback funding, then trigger again |
+| **Duplicate event pushed** | `seen[txHash]` rejects it; no double execution | Nothing to do |
+| **Noise events** | Subscription filter + threshold; ignored events `return` (no revert) | Adjust threshold |
+| **Value too large** | Per-alert cap, total cap, then stop and unsubscribe | Redeploy with new limits |
+| **Forged callback** | `onlyServiceProvider` + `onlyCallbackSender` reject | Nothing to do |
 
-```text
-恢复流程（余额耗尽）:
-  ① cast call 0x8888…8888 "debt(address)(uint256)" <合约>     → 看欠了多少
-  ② cast send 0x8888…8888 "depositTo(address)" <合约> --value 1ether   → 充值
-  ③ cast call <合约> "alerts()(uint256)"                      → 确认恢复处理
+```bash
+# Recover a contract that stopped due to debt
+cast call 0x8888888888888888888888888888888888888888 "debt(address)(uint256)" <contract>
+cast send 0x8888888888888888888888888888888888888888 "depositTo(address)" <contract> --value 1ether
+cast call <contract> "alerts()(uint256)"
 ```
 
 ## Tests
 
 ```bash
 forge test -vv
+# 7 passed
 ```
 
-| Test | 验证 |
+| Test | Verifies |
 |---|---|
-| `test_CountsOnce` | 正常路径：超阈值事件执行一次 |
-| `test_DuplicateIgnored` | 保护②：同一 txHash 重复推送只算一次 |
-| `test_BelowThresholdIgnored` | 保护①：低于阈值不触发 |
-| `test_OnlySystem` | 保护①：非系统合约调用 revert |
-| `test_PerAlertCap` | 保护③：单笔金额封顶 |
-| `test_TotalCapStops` | 保护③：累计到上限后停止 |
-| `test_PauseStops` | 紧急暂停后不再处理 |
+| `test_CountsOnce` | happy path, one alert per transfer |
+| `test_DuplicateIgnored` | same txHash processed once |
+| `test_BelowThresholdIgnored` | below threshold ignored |
+| `test_OnlySystem` | non-system caller reverts |
+| `test_PerAlertCap` | per-alert cap |
+| `test_TotalCapStops` | total cap stops processing |
+| `test_PauseStops` | pause stops processing |
 
 ## 6. Next steps
 
 ```text
-D10  Protection action: pre-approved allowance -> transfer remaining funds to a cold wallet
-D11  Foundry tests: below threshold / wrong sender / after pause
+D11  More tests / edge cases
 D12  One-command reproducible deploy + README polish
+D13  Submission package: repo, contracts, tx hashes, demo video
 ```
 
 ## 7. Safety

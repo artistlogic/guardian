@@ -5,10 +5,12 @@ import { IPayable } from "./reactive/interfaces/IPayable.sol";
 import { AbstractCallback } from "./reactive/base/AbstractCallback.sol";
 
 /// @title GuardianCallback
-/// @notice 部署在目标链，接收 GuardianReactive 的回调，把"异常转出"记录到链上。
-/// @dev    两道门锁：
-///         - onlyServiceProvider：只认目标链的 Callback Proxy
-///         - onlyCallbackSender：payload 里注入的 reactive 地址必须是登记的那个
+/// @notice Destination-chain contract that records alerts delivered by the
+///         callback proxy.
+/// @dev    Two locks:
+///         - onlyServiceProvider: only the chain's callback proxy may call.
+///         - onlyCallbackSender: the injected reactive address must match the
+///           authorized GuardianReactive contract.
 contract GuardianCallback is AbstractCallback {
     event Alert(
         address indexed reactive,
@@ -22,14 +24,14 @@ contract GuardianCallback is AbstractCallback {
     uint256 public lastValue;
     uint256 public lastOriginTx;
 
-    /// @param proxy_   目标链的 Callback Proxy
-    /// @param reactive_ 授权的 GuardianReactive 地址
+    /// @param proxy_    Callback proxy on this chain.
+    /// @param reactive_ Authorized GuardianReactive contract.
     constructor(IPayable proxy_, address reactive_)
         payable
         AbstractCallback(proxy_, reactive_)
     {}
 
-    /// @notice 第一个参数由代理注入（reactive 地址），不能由调用者伪造
+    /// @notice First argument is injected by the proxy; callers cannot forge it.
     function onAlert(
         address reactive_,
         uint256 originChainId_,
@@ -43,7 +45,7 @@ contract GuardianCallback is AbstractCallback {
         emit Alert(reactive_, originChainId_, originTxHash_, value_, alertIndex_);
     }
 
-    /// @notice 让任何人/合约都能清欠款（余额不足时把本合约的钱付给代理）
+    /// @notice Anyone can settle outstanding debt from this contract's balance.
     function coverDebt() external {
         _coverDebt();
     }

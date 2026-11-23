@@ -7,9 +7,10 @@ import { IReactive } from "../src/reactive/interfaces/IReactive.sol";
 import { ISystemContract } from "../src/reactive/interfaces/ISystemContract.sol";
 import { ISubscriptionService } from "../src/reactive/interfaces/ISubscriptionService.sol";
 
-/// @notice GuardianReactive 的保护逻辑测试
-/// - 用 vm.mockCall 模拟系统合约（subscribe / unsubscribe / requestCallbackV_1_0）
-/// - 用 vm.prank(SYSTEM) 模拟系统合约调用 react()
+/// @notice Tests for GuardianReactive protections.
+/// @dev The system contract has no code in the test environment, so its
+///      subscribe / unsubscribe / requestCallbackV_1_0 methods are mocked.
+///      react() is then called as if it came from the system contract.
 contract GuardianReactiveTest is Test {
     address constant SYSTEM = 0x8888888888888888888888888888888888888888;
     uint256 constant SEPOLIA = 11155111;
@@ -26,7 +27,6 @@ contract GuardianReactiveTest is Test {
     GuardianReactive guardian;
 
     function setUp() public {
-        // 系统合约在测试环境里没有代码，先把要调用的三个方法 mock 掉
         vm.mockCall(SYSTEM, abi.encodeWithSelector(ISubscriptionService.subscribe.selector), "");
         vm.mockCall(SYSTEM, abi.encodeWithSelector(ISubscriptionService.unsubscribe.selector), "");
         vm.mockCall(
@@ -66,7 +66,7 @@ contract GuardianReactiveTest is Test {
         guardian.react(_log(txHash_, value_));
     }
 
-    /// 正常情况：超阈值事件被执行一次
+    /// Happy path: a transfer above the threshold is processed once.
     function test_CountsOnce() public {
         _react(1, 10e18);
         assertEq(guardian.alerts(), 1);
@@ -74,7 +74,7 @@ contract GuardianReactiveTest is Test {
         assertTrue(guardian.seen(1));
     }
 
-    /// 保护 ②：同一笔交易重复推送，只算一次
+    /// Protection 2: the same source transaction is processed only once.
     function test_DuplicateIgnored() public {
         _react(2, 10e18);
         _react(2, 10e18);
@@ -82,36 +82,36 @@ contract GuardianReactiveTest is Test {
         assertEq(guardian.alerts(), 1);
     }
 
-    /// 保护 ①：低于阈值不触发
+    /// Protection 1: transfers below the threshold are ignored.
     function test_BelowThresholdIgnored() public {
         _react(3, 4e18);
         assertEq(guardian.alerts(), 0);
     }
 
-    /// 保护 ①：非系统合约调用直接 revert
+    /// Protection 1: calls from anyone but the system contract revert.
     function test_OnlySystem() public {
         vm.expectRevert();
         guardian.react(_log(4, 10e18));
     }
 
-    /// 保护 ③：单笔金额被封顶
+    /// Protection 3: a single alert is capped at maxValuePerAlert.
     function test_PerAlertCap() public {
         _react(5, 150e18);
         assertEq(guardian.alerts(), 1);
-        assertEq(guardian.totalValue(), MAX_PER); // 记录封顶后的值
+        assertEq(guardian.totalValue(), MAX_PER);
         assertEq(guardian.lastValue(), MAX_PER);
     }
 
-    /// 保护 ③：累计金额到上限后不再处理
+    /// Protection 3: processing stops once the total cap is reached.
     function test_TotalCapStops() public {
         _react(6, 100e18);
-        _react(7, 100e18); // 累计 200 = 上限，处理
-        _react(8, 100e18); // 超上限，忽略
+        _react(7, 100e18); // total reaches the cap
+        _react(8, 100e18); // over the cap: ignored
         assertEq(guardian.alerts(), 2);
         assertEq(guardian.totalValue(), MAX_TOTAL);
     }
 
-    /// 暂停后不再处理
+    /// Emergency pause stops all further processing.
     function test_PauseStops() public {
         guardian.pause();
         _react(9, 10e18);
