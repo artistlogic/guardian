@@ -57,7 +57,7 @@ Reactive 把"监听 + 可靠发交易"交给网络，用户只需要定义"什�
 - **订阅收窄**：`chainId + 代币地址 + topic0 + topic1(被守护钱包)`，只有"从该钱包转出"的转账会进入 `react()`。
 - **阈值判断**：`react()` 内判断，低于阈值直接 `return`（不 revert，回滚也要收费）。
 - **回调内容**：`(reactive, originChainId, originTxHash, value, alertIndex)`，第一个参数由代理注入。
-- **两道门锁**：`onlyServiceProvider`（只认回调代理）+ `onlyCallbackSender`（只认我们的 reactive 合约）。
+- **两道门锁**：`onlyServiceProvider`（只认回调代理）+ `onlyCallbackSender`（只认本项目授权的 reactive 合约）。
 - **防失控**：
   - 订阅过滤 + 合约内校验，只在该触发时触发；
   - `seen[txHash]` 去重，同一笔源交易只处理一次；
@@ -165,4 +165,4 @@ cast logs --rpc-url https://ethereum-sepolia-rpc.publicnode.com --address <GUARD
 
 ## 9. 安全说明
 
-仅使用测试网（Sepolia / Lasna）。永远不要提交 `.env`。演示钱包是一次性测试钱包。
+仅使用测试网（Sepolia / Lasna）。永远不要提交 `.env`。

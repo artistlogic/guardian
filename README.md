@@ -71,7 +71,7 @@ watched wallet            Sepolia        Lasna                    Sepolia
   Only transfers **out of** the watched wallet ever reach `react()`.
 - **Threshold** is checked inside `react()`; below-threshold transfers `return` silently (reverts are charged too).
 - **Callback** carries `(reactive, originChainId, originTxHash, value, alertIndex)`; the first field is injected by the proxy.
-- **Two locks** on the callback: `onlyServiceProvider` (only the callback proxy) and `onlyCallbackSender` (only our reactive contract).
+- **Two locks** on the callback: `onlyServiceProvider` (only the callback proxy) and `onlyCallbackSender` (only the authorized reactive contract).
 - **Runaway protection**:
   - only transfers from the watched wallet trigger (subscription filter + in-contract checks),
   - each source txHash is processed once (`seen` mapping),
@@ -183,4 +183,4 @@ the contracts; nothing in §2 is simulated.
 
 ## 9. Safety
 
-Test networks only (Sepolia / Lasna). Never commit `.env`. The demo wallet is a throwaway test wallet.
+Test networks only (Sepolia / Lasna). Never commit `.env`.
