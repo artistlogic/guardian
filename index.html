@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Guardian · Watched Wallet Alerts</title>
+<style>
+  :root { --bg:#0b0f14; --card:#131a22; --line:#1f2a36; --fg:#e6edf3; --muted:#8b98a5; --accent:#4cc2ff; --warn:#ffb020; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.5 ui-sans-serif,system-ui,"Segoe UI",Roboto; }
+  header { padding:28px 20px 8px; max-width:960px; margin:0 auto; }
+  h1 { margin:0 0 6px; font-size:22px; }
+  .sub { color:var(--muted); font-size:13px; }
+  .stats { display:flex; gap:12px; flex-wrap:wrap; margin:18px 0 6px; }
+  .stat { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px 16px; min-width:150px; }
+  .stat b { display:block; font-size:20px; color:var(--accent); }
+  .stat span { color:var(--muted); font-size:12px; }
+  main { max-width:960px; margin:0 auto; padding:12px 20px 60px; }
+  .item { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px 16px; margin-bottom:10px; }
+  .row { display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+  .amt { color:var(--warn); font-weight:600; }
+  .hash { font-family:ui-monospace,Consolas,monospace; font-size:12px; color:var(--muted); word-break:break-all; }
+  a { color:var(--accent); text-decoration:none; }
+  .empty { color:var(--muted); padding:24px; text-align:center; border:1px dashed var(--line); border-radius:10px; }
+  footer { color:var(--muted); font-size:12px; max-width:960px; margin:0 auto; padding:0 20px 40px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🛡️ Guardian · Watched Wallet Alerts</h1>
+  <div class="sub">
+    On-chain alert log on Sepolia, produced by Reactive <code>react()</code>.
+    <a id="contract" href="#" target="_blank" rel="noreferrer"></a>
+  </div>
+  <div class="stats">
+    <div class="stat"><b id="count">–</b><span>alerts</span></div>
+    <div class="stat"><b id="total">–</b><span>total amount (D3RT)</span></div>
+    <div class="stat"><b id="latest">–</b><span>latest alert</span></div>
+  </div>
+</header>
+
+<main id="list"><div class="empty">Loading…</div></main>
+
+<footer>
+  Data from Blockscout logs API · auto-refresh every 20s ·
+  contract <span id="addr"></span>
+</footer>
+
+<script>
+const CALLBACK = "0xa070a801f8cd3f844e41e672d9e42380485cabe0"; // GuardianCallback (Sepolia)
+const API = "https://eth-sepolia.blockscout.com/api";
+const EXPLORER = "https://eth-sepolia.blockscout.com/tx/";
+const DECIMALS = 18n;
+
+document.getElementById("contract").href = `https://eth-sepolia.blockscout.com/address/${CALLBACK}`;
+document.getElementById("contract").textContent = CALLBACK.slice(0, 10) + "…";
+document.getElementById("addr").textContent = CALLBACK;
+
+const word = (data, i) => BigInt("0x" + data.slice(2 + i * 64, 2 + (i + 1) * 64));
+const fmt = (v) => (Number(v / 10n ** (DECIMALS - 4n)) / 1e4).toFixed(4);
+
+async function load() {
+  const url = `${API}?module=logs&action=getLogs&address=${CALLBACK}&fromBlock=0&toBlock=latest`;
+  const res = await fetch(url);
+  const json = await res.json();
+  const logs = json.result || [];
+  const list = document.getElementById("list");
+
+  if (!logs.length) {
+    list.innerHTML = '<div class="empty">No alerts yet. Send a transfer from the watched wallet.</div>';
+    return;
+  }
+
+  let total = 0n;
+  const items = logs.slice().reverse().map((log) => {
+    const value = word(log.data, 2);
+    const originTx = "0x" + word(log.data, 1).toString(16).padStart(64, "0");
+    total += value;
+    const when = log.timeStamp ? new Date(parseInt(log.timeStamp, 16) * 1000).toLocaleString() : "";
+    return `<div class="item">
+      <div class="row"><span class="amt">${fmt(value)} D3RT</span><span class="hash">${when}</span></div>
+      <div class="hash">origin&nbsp;<a href="${EXPLORER}${originTx}" target="_blank" rel="noreferrer">${originTx}</a></div>
+      <div class="hash">callback&nbsp;<a href="${EXPLORER}${log.transactionHash}" target="_blank" rel="noreferrer">${log.transactionHash}</a></div>
+    </div>`;
+  });
+
+  list.innerHTML = items.join("");
+  document.getElementById("count").textContent = logs.length;
+  document.getElementById("total").textContent = fmt(total);
+  document.getElementById("latest").textContent =
+    logs[logs.length - 1].timeStamp ? new Date(parseInt(logs[logs.length - 1].timeStamp, 16) * 1000).toLocaleString() : "–";
+}
+
+load();
+setInterval(load, 20000);
+</script>
+</body>
+</html>
