@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Sentry · On-chain Wallet Alerting</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Cpath d='M24 4l16 6v12c0 10.5-6.8 18.6-16 22-9.2-3.4-16-11.5-16-22V10z' fill='none' stroke='%2354c8ff' stroke-width='3'/%3E%3C/svg%3E">
 <meta name="description" content="Sentry watches token outflows from a guarded wallet. A reactive contract records an on-chain alert on the destination chain — no server, no hosted key.">
 <meta property="og:title" content="Sentry · On-chain Wallet Alerting">
 <meta property="og:description" content="Reactive Omni middleware: detect outflow, record on-chain alert, push a notification.">
@@ -443,21 +444,50 @@ async function fromV2() {
   return (j.items || []).map((it) => ({ data: it.data, txHash: it.transaction_hash, ts: it.block_timestamp }));
 }
 
+const RPC_LIST = [
+  "https://sepolia.gateway.tenderly.co",
+  "https://ethereum-sepolia-rpc.publicnode.com",
+  "https://1rpc.io/sepolia",
+  "https://sepolia.drpc.org",
+];
+
+async function rpcPost(url, payload, ms = 8000) {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), ms);
+  try {
+    const r = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      signal: ctl.signal,
+    });
+    return await r.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function rpcTry(payload) {
+  for (const url of RPC_LIST) {
+    try {
+      const j = await rpcPost(url, payload);
+      if (j && !j.error) return j;
+    } catch {}
+  }
+  throw new Error("all rpc endpoints failed");
+}
+
 async function fromRpc() {
-  const head = await fetch(RPC, {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_blockNumber", params: [] }),
-  }).then((r) => r.json());
+  const head = await rpcTry({ jsonrpc: "2.0", id: 1, method: "eth_blockNumber", params: [] });
   const latest = parseInt(head.result, 16);
   const out = [];
   const CHUNK = 9000, SPAN = 45000;
   for (let end = latest; end > latest - SPAN; end -= CHUNK) {
     const from = Math.max(end - CHUNK, 0);
-    const res = await fetch(RPC, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_getLogs",
-        params: [{ address: CALLBACK, fromBlock: "0x" + from.toString(16), toBlock: "0x" + end.toString(16) }] }),
-    }).then((r) => r.json());
+    const res = await rpcTry({
+      jsonrpc: "2.0", id: 1, method: "eth_getLogs",
+      params: [{ address: CALLBACK, fromBlock: "0x" + from.toString(16), toBlock: "0x" + end.toString(16) }],
+    });
     for (const l of res.result || []) {
       out.push({ data: l.data, txHash: l.transactionHash, ts: null, block: l.blockNumber });
     }
@@ -467,10 +497,7 @@ async function fromRpc() {
   const times = {};
   await Promise.all(blocks.slice(0, 25).map(async (bn) => {
     try {
-      const b = await fetch(RPC, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_getBlockByNumber", params: [bn, false] }),
-      }).then((r) => r.json());
+      const b = await rpcTry({ jsonrpc: "2.0", id: 1, method: "eth_getBlockByNumber", params: [bn, false] });
       times[bn] = b.result ? parseInt(b.result.timestamp, 16) * 1000 : null;
     } catch { times[bn] = null; }
   }));
