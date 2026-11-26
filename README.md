@@ -174,6 +174,8 @@ The next pieces are separate and opt-in:
 These need a second contract to hold an allowance, which is a different trust decision from
 alerting. Alerting alone has no such requirement, which is why it ships first.
 
+Integration surfaces (config file, webhook, SDK): [docs/INTEGRATION.md](docs/INTEGRATION.md).
+
 ## 9. AI assistance
 
 Parts drafted with AI assistance, reviewed and tested before use:

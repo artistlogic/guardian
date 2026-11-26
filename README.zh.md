@@ -169,6 +169,8 @@ cast call <合约> "alerts()(uint256)"
 这些功能需要第二个合约持有额度，与"只做告警"是不同的信任前提。
 告警本身没有这项要求，因此先上线。
 
+接入方式（配置文件 / Webhook / SDK）：[docs/INTEGRATION.md](docs/INTEGRATION.md)。
+
 ## 9. AI 辅助说明
 
 以下部分由 AI 辅助起草，并在使用前完成审阅与测试：

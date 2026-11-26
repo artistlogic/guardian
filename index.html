@@ -382,9 +382,22 @@ async function fromRpc() {
         params: [{ address: CALLBACK, fromBlock: "0x" + from.toString(16), toBlock: "0x" + end.toString(16) }] }),
     }).then((r) => r.json());
     for (const l of res.result || []) {
-      out.push({ data: l.data, txHash: l.transactionHash, ts: null });
+      out.push({ data: l.data, txHash: l.transactionHash, ts: null, block: l.blockNumber });
     }
   }
+  // fill block timestamps (few unique blocks)
+  const blocks = [...new Set(out.map((l) => l.block))];
+  const times = {};
+  await Promise.all(blocks.slice(0, 25).map(async (bn) => {
+    try {
+      const b = await fetch(RPC, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_getBlockByNumber", params: [bn, false] }),
+      }).then((r) => r.json());
+      times[bn] = b.result ? parseInt(b.result.timestamp, 16) * 1000 : null;
+    } catch { times[bn] = null; }
+  }));
+  for (const l of out) l.ts = times[l.block] || null;
   return out;
 }
 
@@ -527,18 +540,21 @@ function cardOf(log) {
   const pct = CURRENT_MAX > 0n ? Number((v * 100n) / CURRENT_MAX) : 0;
   const sev = sevOf(v);
   const exact = log.ts ? new Date(log.ts).toLocaleString() : "";
+  const journey = log.ts
+    ? `<div class="row" style="margin-top:9px">
+         <button class="jmbtn" data-jm data-origin="${originTx}" data-cb="${log.txHash}" data-ts="${log.ts}">journey</button>
+       </div>
+       <div class="jm" data-jmbox="${log.txHash}"></div>`
+    : "";
   return `<div class="item">
     <div class="row">
-      <span>${avatarOf(originTx)}<span class="kind ${sev}">${sev}</span> <span class="amt">${fmt(v)} D3RT</span></span>
+      <span><span class="kind ${sev}">${sev}</span> <span class="amt">${fmt(v)} D3RT</span></span>
       <span class="when" title="${exact || "block time unavailable"}">${ago(log.ts)}</span>
     </div>
     <div class="hash"><span class="chip">origin</span><a href="${EXPLORER}${originTx}" target="_blank" rel="noreferrer">${originTx}</a><button class="copy" data-copy="${originTx}">copy</button></div>
     <div class="hash"><span class="chip">callback</span><a href="${EXPLORER}${log.txHash}" target="_blank" rel="noreferrer">${log.txHash}</a><button class="copy" data-copy="${log.txHash}">copy</button></div>
     <div class="meter"><i style="width:${pct}%"></i></div>
-    <div class="row" style="margin-top:9px">
-      <button class="jmbtn" data-jm data-origin="${originTx}" data-cb="${log.txHash}" data-ts="${log.ts || ""}">journey</button>
-    </div>
-    <div class="jm" data-jmbox="${log.txHash}"></div>
+    ${journey}
   </div>`;
 }
 
