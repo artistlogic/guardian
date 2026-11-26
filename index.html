@@ -764,7 +764,7 @@ async function openJourney(btn) {
     <div class="leg done"><span class="n"></span><span><b>origin</b> · Sepolia transfer</span><em>${clock(ot)}</em></div>
     <div class="leg"><span class="n"></span><span><b>reactive</b> · Lasna <em>(react() executes here)</em></span><em>—</em></div>
     <div class="leg done"><span class="n"></span><span><b>callback</b> · Sepolia on-chain alert</span><em>${clock(ct)}</em></div>
-    <div class="sum">end-to-end: <b>${total !== null ? total + "s" : "n/a"}</b> from source transfer to recorded alert</div>`;
+    <div class="sum">end-to-end: <b>${total !== null ? total + "s" : "n/a"}</b> from source transfer to recorded alert <span style="color:#5c7488">(times shown in local time)</span></div>`;
 
   box.dataset.filled = "1";
   jmHTML.set(cb, box.innerHTML);
