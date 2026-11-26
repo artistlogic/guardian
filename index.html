@@ -119,6 +119,30 @@
   .trace li{margin:7px 0}
   .trace b{color:var(--fg);font-weight:600}
   @media(max-width:860px){.grid2{grid-template-columns:1fr}}
+
+  /* ── list controls & smooth bits ── */
+  .list-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 12px}
+  .list-head .count{color:var(--muted);font-size:12px}
+  .refresh{margin-left:auto;display:flex;align-items:center;gap:8px}
+  .ghost{font:600 12px/1 ui-monospace,Consolas,monospace;color:var(--muted);background:transparent;
+    border:1px solid var(--line);border-radius:8px;padding:7px 11px;cursor:pointer;transition:.15s}
+  .ghost:hover{color:var(--fg);border-color:rgba(84,200,255,.4)}
+  .ghost:active{transform:scale(.97)}
+  .ring{width:14px;height:14px;border-radius:50%;border:2px solid var(--line);border-top-color:var(--accent);
+    animation:spin .9s linear infinite;display:none}
+  .ring.on{display:inline-block}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .copy{font:600 10px/1 ui-monospace,monospace;letter-spacing:.06em;color:#6f8aa3;background:transparent;
+    border:1px solid transparent;border-radius:5px;padding:2px 6px;cursor:pointer;transition:.15s;vertical-align:middle}
+  .copy:hover{color:var(--accent);border-color:var(--line)}
+  .more{display:block;width:100%;margin:2px 0 10px;font:600 12px/1 ui-monospace,monospace;color:var(--muted);
+    background:rgba(15,23,34,.5);border:1px dashed var(--line);border-radius:12px;padding:12px;cursor:pointer;transition:.15s}
+  .more:hover{color:var(--fg);border-color:rgba(84,200,255,.35)}
+  .skel{height:76px;border-radius:14px;margin-bottom:11px;border:1px solid var(--line);
+    background:linear-gradient(90deg,#0f1722 25%,#152131 37%,#0f1722 63%);background-size:400% 100%}
+  @keyframes shimmer{0%{background-position:100% 0}100%{background-position:0 0}}
+  .item{animation:rise .18s ease both}
+  @keyframes rise{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
 </style>
 </head>
 <body>
@@ -159,6 +183,14 @@
 
   <main>
     <h2>Alert history</h2>
+    <div class="list-head">
+      <span class="count" id="meta">–</span>
+      <div class="refresh">
+        <span class="ring" id="ring"></span>
+        <span class="when" id="countdown"></span>
+        <button class="ghost" id="refresh-btn" type="button">refresh</button>
+      </div>
+    </div>
     <div id="list"><div class="empty">Loading on-chain data…</div></div>
 
     <h2>Inside the contract</h2>
@@ -320,25 +352,8 @@ async function load() {
     return;
   }
 
-  let total = 0n;
-  const cards = logs.map((log) => {
-    const value = log._value ? BigInt(log._value) : word(log.data, 2);
-    const originTx = log._origin || ("0x" + word(log.data, 1).toString(16).padStart(64, "0"));
-    total += value;
-    return `<div class="item">
-      <div class="row">
-        <span class="amt">${fmt(value)} D3RT</span>
-        <span class="when">${ago(log.ts)}</span>
-      </div>
-      <div class="hash"><span class="chip">origin</span><a href="${EXPLORER}${originTx}" target="_blank" rel="noreferrer">${originTx}</a></div>
-      <div class="hash"><span class="chip">callback</span><a href="${EXPLORER}${log.txHash}" target="_blank" rel="noreferrer">${log.txHash}</a></div>
-    </div>`;
-  });
-
-  list.innerHTML = cards.join("");
-  document.getElementById("count").textContent = logs.length;
-  document.getElementById("total").textContent = fmt(total);
-  document.getElementById("latest").textContent = logs[0].ts ? ago(logs[0].ts) : "–";
+  CURRENT = logs;
+  renderList();
 }
 
 const SNIPPETS = {
@@ -417,8 +432,71 @@ window.addEventListener("keydown", (e) => {
 });
 renderCode("react");
 
-load();
-setInterval(load, 20000);
+/* ── list state, copy buttons, refresh countdown ── */
+let CURRENT = [], SHOWN = 8, PAGE = 8, nextAt = 0;
+
+function valueOf(log) { return log._value ? BigInt(log._value) : word(log.data, 2); }
+function originOf(log) { return log._origin || ("0x" + word(log.data, 1).toString(16).padStart(64, "0")); }
+
+function cardOf(log) {
+  const originTx = originOf(log);
+  return `<div class="item">
+    <div class="row">
+      <span class="amt">${fmt(valueOf(log))} D3RT</span>
+      <span class="when">${ago(log.ts)}</span>
+    </div>
+    <div class="hash"><span class="chip">origin</span><a href="${EXPLORER}${originTx}" target="_blank" rel="noreferrer">${originTx}</a><button class="copy" data-copy="${originTx}">copy</button></div>
+    <div class="hash"><span class="chip">callback</span><a href="${EXPLORER}${log.txHash}" target="_blank" rel="noreferrer">${log.txHash}</a><button class="copy" data-copy="${log.txHash}">copy</button></div>
+  </div>`;
+}
+
+function renderList() {
+  const list = document.getElementById("list");
+  const total = CURRENT.reduce((a, l) => a + valueOf(l), 0n);
+  const items = CURRENT.slice(0, SHOWN).map(cardOf);
+  if (CURRENT.length > SHOWN) {
+    items.push(`<button class="more" id="more" type="button">Show all ${CURRENT.length} alerts</button>`);
+  }
+  list.innerHTML = items.join("");
+  const more = document.getElementById("more");
+  if (more) more.onclick = () => { SHOWN = CURRENT.length; renderList(); };
+
+  document.getElementById("count").textContent = CURRENT.length;
+  document.getElementById("total").textContent = fmt(total);
+  document.getElementById("latest").textContent = CURRENT[0].ts ? ago(CURRENT[0].ts) : "–";
+  document.getElementById("meta").textContent = `showing ${Math.min(SHOWN, CURRENT.length)} of ${CURRENT.length}`;
+}
+
+document.getElementById("list").addEventListener("click", async (e) => {
+  const btn = e.target.closest(".copy");
+  if (!btn) return;
+  try {
+    await navigator.clipboard.writeText(btn.dataset.copy);
+    const old = btn.textContent;
+    btn.textContent = "copied ✓";
+    btn.style.color = "var(--ok)";
+    setTimeout(() => { btn.textContent = old; btn.style.color = ""; }, 1200);
+  } catch { btn.textContent = "n/a"; }
+});
+
+async function refresh(manual) {
+  const btn = document.getElementById("refresh-btn");
+  const ring = document.getElementById("ring");
+  if (manual) { btn.disabled = true; ring.classList.add("on"); }
+  await load();
+  nextAt = Date.now() + 20000;
+  if (manual) { btn.disabled = false; ring.classList.remove("on"); }
+}
+
+document.getElementById("refresh-btn").onclick = () => refresh(true);
+setInterval(() => {
+  const left = Math.max(0, Math.ceil((nextAt - Date.now()) / 1000));
+  const cd = document.getElementById("countdown");
+  if (cd) cd.textContent = left > 0 ? `next in ${left}s` : "refreshing…";
+  if (left === 0) refresh(false);
+}, 1000);
+
+refresh(false);
 </script>
 </body>
 </html>
