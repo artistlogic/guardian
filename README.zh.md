@@ -156,6 +156,17 @@ cast send 0x8888888888888888888888888888888888888888 "depositTo(address)" <合�
 cast call <合约> "alerts()(uint256)"
 ```
 
+## 7b. 相关工作
+
+已有方案包括 Tenderly Alerts、OpenZeppelin Defender Sentinels、Forta，
+以及 Hypernative、Hexagate 等企业级威胁检测服务。
+
+它们的共同前提是：监听程序运行在用户自己的环境里，告警投递到用户的基础设施。
+Sentry 走的是另一条路——订阅与回调都在链上执行，
+因此没有需要托管的监听进程，每条告警都能在区块浏览器上核对。
+
+范围刻意更小：单个钱包、单个代币、单个阈值，面向个人尺度。
+
 ## 8. 范围与路线图
 
 当前版本负责告警记录，不转移资金。

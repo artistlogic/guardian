@@ -161,6 +161,17 @@ cast send 0x8888888888888888888888888888888888888888 "depositTo(address)" <contr
 cast call <contract> "alerts()(uint256)"
 ```
 
+## 7b. Related work
+
+Existing options include Tenderly Alerts, OpenZeppelin Defender Sentinels, Forta, and enterprise
+threat-detection services such as Hypernative and Hexagate.
+
+They share one assumption: a listener runs somewhere the user controls, and alerts are delivered to
+the user's infrastructure. Sentry takes a different route — the subscription and the callback
+execute on-chain, so there is no listener to host and every alert is verifiable on a block explorer.
+
+The scope is intentionally smaller: one wallet, one token, one threshold, personal scale.
+
 ## 8. Scope and roadmap
 
 This version records alerts. It does not move funds.
