@@ -3,51 +3,242 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Sentry · Watched Wallet Alerts</title>
+<title>Sentry · On-chain Wallet Alerting</title>
+<meta name="description" content="Sentry watches token outflows from a guarded wallet. A reactive contract records an on-chain alert on the destination chain — no server, no hosted key.">
+<meta property="og:title" content="Sentry · On-chain Wallet Alerting">
+<meta property="og:description" content="Reactive Omni middleware: detect outflow, record on-chain alert, push a notification.">
 <style>
-  :root { --bg:#0b0f14; --card:#131a22; --line:#1f2a36; --fg:#e6edf3; --muted:#8b98a5; --accent:#4cc2ff; --warn:#ffb020; }
-  * { box-sizing:border-box; }
-  body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.5 ui-sans-serif,system-ui,"Segoe UI",Roboto; }
-  header { padding:28px 20px 8px; max-width:960px; margin:0 auto; }
-  h1 { margin:0 0 6px; font-size:22px; }
-  .sub { color:var(--muted); font-size:13px; }
-  .stats { display:flex; gap:12px; flex-wrap:wrap; margin:18px 0 6px; }
-  .stat { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px 16px; min-width:150px; }
-  .stat b { display:block; font-size:20px; color:var(--accent); }
-  .stat span { color:var(--muted); font-size:12px; }
-  main { max-width:960px; margin:0 auto; padding:12px 20px 60px; }
-  .item { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px 16px; margin-bottom:10px; }
-  .row { display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; }
-  .amt { color:var(--warn); font-weight:600; }
-  .hash { font-family:ui-monospace,Consolas,monospace; font-size:12px; color:var(--muted); word-break:break-all; }
-  a { color:var(--accent); text-decoration:none; }
-  .empty { color:var(--muted); padding:24px; text-align:center; border:1px dashed var(--line); border-radius:10px; }
-  footer { color:var(--muted); font-size:12px; max-width:960px; margin:0 auto; padding:0 20px 40px; }
+  :root{
+    --bg:#070b10; --card:#0f1722; --card2:#0b121b; --line:#1b2836;
+    --fg:#eaf1f9; --muted:#8ea1b6; --accent:#54c8ff; --accent2:#8b7bff;
+    --warn:#ffc25e; --ok:#3fe0a1;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;color:var(--fg);min-height:100vh;
+    font:15px/1.65 ui-sans-serif,system-ui,"Segoe UI",Roboto,Helvetica,Arial;
+    background:
+      radial-gradient(1000px 520px at 12% -8%, rgba(84,200,255,.16), transparent 62%),
+      radial-gradient(820px 460px at 88% -4%, rgba(139,123,255,.14), transparent 58%),
+      linear-gradient(180deg,#080d13,#070b10 40%)}
+  .wrap{max-width:1060px;margin:0 auto;padding:0 22px}
+  a{color:var(--accent);text-decoration:none}
+  a:hover{text-decoration:underline}
+
+  header{padding:52px 0 6px}
+  .brand{display:flex;align-items:center;gap:12px}
+  .brand svg{flex:0 0 auto}
+  .name{font-size:15px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+  .pill{display:inline-flex;align-items:center;gap:8px;margin-left:auto;
+    font-size:12px;color:var(--muted);border:1px solid var(--line);
+    background:rgba(15,23,34,.7);border-radius:999px;padding:5px 12px;white-space:nowrap}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--ok);box-shadow:0 0 10px var(--ok);
+    animation:pulse 2.4s ease-in-out infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+
+  h1{font-size:clamp(30px,5vw,44px);line-height:1.1;letter-spacing:-.9px;margin:22px 0 10px}
+  h1 em{font-style:normal;background:linear-gradient(92deg,var(--accent),var(--accent2));
+    -webkit-background-clip:text;background-clip:text;color:transparent}
+  .lede{color:var(--muted);max-width:700px;font-size:16px;margin:0}
+  .cta{display:flex;gap:10px;flex-wrap:wrap;margin:22px 0 0}
+  .btn{display:inline-flex;align-items:center;gap:8px;padding:10px 16px;border-radius:10px;
+    font-size:14px;font-weight:600;border:1px solid var(--line);color:var(--fg);
+    background:rgba(15,23,34,.75);text-decoration:none;transition:.16s}
+  .btn:hover{border-color:rgba(84,200,255,.45);text-decoration:none}
+  .btn.primary{background:linear-gradient(92deg,var(--accent),var(--accent2));color:#04131c;border:none}
+
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin:36px 0 0}
+  .stat{position:relative;overflow:hidden;border:1px solid var(--line);border-radius:16px;
+    padding:18px 20px;background:linear-gradient(180deg,var(--card),var(--card2))}
+  .stat:after{content:"";position:absolute;inset:0;background:linear-gradient(120deg,transparent 40%,rgba(255,255,255,.03));pointer-events:none}
+  .stat b{display:block;font-size:27px;letter-spacing:-.6px;line-height:1.2}
+  .stat span{display:block;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.09em;margin-top:2px}
+  .stat.hi b{color:var(--accent)}
+  .stat small{color:var(--muted);font-size:11px}
+
+  main{padding:6px 0 46px}
+  h2{font-size:12px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);
+    margin:40px 0 14px;display:flex;align-items:center;gap:10px}
+  h2:after{content:"";height:1px;flex:1;background:var(--line)}
+
+  .item{border:1px solid var(--line);border-radius:14px;padding:15px 17px;margin-bottom:11px;
+    background:linear-gradient(180deg,var(--card),#0c131c);transition:.16s}
+  .item:hover{border-color:rgba(84,200,255,.32)}
+  .row{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}
+  .amt{font-size:17px;font-weight:700;color:var(--warn);letter-spacing:-.2px}
+  .when{color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums}
+  .hash{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px;
+    color:var(--muted);word-break:break-all;margin-top:7px}
+  .chip{display:inline-block;font-size:10px;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--muted);border:1px solid var(--line);border-radius:5px;padding:1px 6px;margin-right:8px}
+
+  .empty{color:var(--muted);padding:30px;text-align:center;border:1px dashed var(--line);border-radius:14px}
+
+  .arch{border:1px solid var(--line);border-radius:16px;padding:12px;
+    background:linear-gradient(180deg,var(--card),#0a1119);overflow-x:auto}
+  .arch svg{display:block;min-width:640px;width:100%;height:auto}
+
+  .steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px;margin-top:14px}
+  .step{border:1px solid var(--line);border-radius:14px;padding:16px 18px;background:rgba(15,23,34,.55)}
+  .step .n{font-family:ui-monospace,monospace;font-size:11px;color:var(--accent);letter-spacing:.1em}
+  .step h3{margin:7px 0 4px;font-size:15px}
+  .step p{margin:0;color:var(--muted);font-size:13px}
+
+  footer{border-top:1px solid var(--line);padding:22px 0 48px;color:var(--muted);font-size:12px}
+  .stack{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 12px}
+  .tech{font-size:11px;border:1px solid var(--line);border-radius:999px;padding:3px 10px;color:var(--muted)}
+  .foot-links{display:flex;gap:16px;flex-wrap:wrap}
+  code{font-family:ui-monospace,Consolas,monospace;font-size:12px}
+  @media(max-width:640px){header{padding-top:34px}.pill{display:none}}
+
+  /* ── code ↔ effect panel ── */
+  .panel{border:1px solid var(--line);border-radius:16px;overflow:hidden;
+    background:linear-gradient(180deg,#0d151f,#0a1119);box-shadow:0 18px 46px rgba(0,0,0,.45)}
+  .panel .bar{display:flex;align-items:center;gap:8px;padding:11px 14px;border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg,#101a26,#0c131c)}
+  .dots{display:flex;gap:6px}
+  .dots i{width:10px;height:10px;border-radius:50%;display:block}
+  .dots i:nth-child(1){background:#ff5f57}.dots i:nth-child(2){background:#febc2e}.dots i:nth-child(3){background:#28c840}
+  .tabs{display:flex;gap:4px;margin-left:10px}
+  .tab{font:600 12px/1 ui-monospace,Consolas,monospace;letter-spacing:.02em;color:var(--muted);
+    background:transparent;border:1px solid transparent;border-radius:8px;padding:7px 12px;cursor:pointer;transition:.15s}
+  .tab:hover{color:var(--fg)}
+  .tab[aria-selected="true"]{color:var(--fg);border-color:var(--line);background:rgba(84,200,255,.08)}
+  .kbd{margin-left:auto;color:#526a80;font:11px/1 ui-monospace,monospace;letter-spacing:.08em}
+  .panel pre{margin:0;padding:16px 18px 20px;overflow:auto;max-height:340px}
+  .panel code{font:13px/1.75 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre;display:block}
+  .ln{color:#41566b;user-select:none;display:inline-block;width:2.2em;text-align:right;margin-right:14px}
+  .kw{color:#c792ea}.fn{color:#82aaff}.num{color:#f78c6c}.cm{color:#637777;font-style:italic}
+  .st{color:#c3e88d}.var{color:#eaf1f9}.ty{color:#ffcb6b}
+  .fadein{animation:fade .16s ease-out}
+  @keyframes fade{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
+  .grid2{display:grid;grid-template-columns:1.15fr .85fr;gap:16px;align-items:start}
+  .trace{border:1px solid var(--line);border-radius:14px;padding:16px 18px;background:rgba(15,23,34,.55)}
+  .trace h4{margin:0 0 10px;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+  .trace ol{margin:0;padding-left:18px;color:var(--muted);font-size:13px}
+  .trace li{margin:7px 0}
+  .trace b{color:var(--fg);font-weight:600}
+  @media(max-width:860px){.grid2{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
-<header>
-  <h1>🛡️ Sentry · Watched Wallet Alerts</h1>
-  <div class="sub">
-    On-chain alert log on Sepolia, produced by Reactive <code>react()</code>.
-    <a id="contract" href="#" target="_blank" rel="noreferrer"></a>
-  </div>
-  <div class="stats">
-    <div class="stat"><b id="count">–</b><span>alerts</span></div>
-    <div class="stat"><b id="total">–</b><span>total amount (D3RT)</span></div>
-    <div class="stat"><b id="latest">–</b><span>latest alert</span></div>
-  </div>
-</header>
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <svg width="34" height="34" viewBox="0 0 48 48" aria-hidden="true">
+        <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#54c8ff"/><stop offset="1" stop-color="#8b7bff"/>
+        </linearGradient></defs>
+        <path d="M24 4l16 6v12c0 10.5-6.8 18.6-16 22-9.2-3.4-16-11.5-16-22V10z"
+              fill="none" stroke="url(#g)" stroke-width="2.6"/>
+        <path d="M17 24h4l2.5-6 3.5 12 2.5-6h4" fill="none" stroke="url(#g)"
+              stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span class="name">Sentry</span>
+      <span class="pill"><span class="dot"></span>Sepolia · Reactive Omni</span>
+    </div>
 
-<main id="list"><div class="empty">Loading…</div></main>
+    <h1>On-chain <em>wallet alerting</em>, without a bot to host.</h1>
+    <p class="lede">
+      Sentry watches erc-20 transfers out of a guarded wallet. When a transfer exceeds the threshold,
+      a reactive contract triggers a cross-chain callback that records an alert on the destination
+      chain and pushes a notification. No server, no hosted private key, no polling loop of your own.
+    </p>
+    <div class="cta">
+      <a class="btn primary" href="https://github.com/artistlogic/guardian" target="_blank" rel="noreferrer">Source code</a>
+      <a class="btn" id="contract" href="#" target="_blank" rel="noreferrer">Callback contract</a>
+      <a class="btn" href="https://ntfy.sh/guardian-2026" target="_blank" rel="noreferrer">Notification channel</a>
+    </div>
 
-<footer>
-  Data from Blockscout logs API · auto-refresh every 20s ·
-  contract <span id="addr"></span>
-</footer>
+    <div class="stats">
+      <div class="stat hi"><b id="count">–</b><span>alerts recorded</span><small>&nbsp;</small></div>
+      <div class="stat"><b id="total">–</b><span>total flagged (D3RT)</span><small>&nbsp;</small></div>
+      <div class="stat"><b id="latest">–</b><span>latest alert</span><small id="synced"></small></div>
+    </div>
+  </header>
+
+  <main>
+    <h2>Alert history</h2>
+    <div id="list"><div class="empty">Loading on-chain data…</div></div>
+
+    <h2>Inside the contract</h2>
+    <div class="grid2">
+      <div class="panel">
+        <div class="bar">
+          <div class="dots"><i></i><i></i><i></i></div>
+          <div class="tabs" role="tablist">
+            <button class="tab" role="tab" aria-selected="true" data-tab="react">react()</button>
+            <button class="tab" role="tab" aria-selected="false" data-tab="onalert">onAlert()</button>
+          </div>
+          <span class="kbd">KEYS 1 / 2</span>
+        </div>
+        <pre><code id="code"></code></pre>
+      </div>
+      <div class="trace">
+        <h4 id="trace-title">Watch → decide → request</h4>
+        <ol id="trace"></ol>
+      </div>
+    </div>
+
+    <h2>Architecture</h2>
+    <div class="arch">
+      <svg viewBox="0 0 880 190" role="img" aria-label="Sepolia origin to Lasna reactive to Sepolia callback">
+        <defs>
+          <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+            <path d="M0 0L10 5L0 10z" fill="#54c8ff"/>
+          </marker>
+          <linearGradient id="boxg" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#111b27"/><stop offset="1" stop-color="#0b131c"/>
+          </linearGradient>
+        </defs>
+        <g font-family="ui-sans-serif,system-ui" font-size="12">
+          <rect x="14" y="46" width="230" height="96" rx="12" fill="url(#boxg)" stroke="#1b2836"/>
+          <text x="34" y="74" fill="#8ea1b6" font-size="10" letter-spacing="1.4">ORIGIN</text>
+          <text x="34" y="96" fill="#eaf1f9" font-size="14" font-weight="600">Sepolia</text>
+          <text x="34" y="118" fill="#8ea1b6">ERC-20 Transfer</text>
+
+          <rect x="326" y="46" width="230" height="96" rx="12" fill="url(#boxg)" stroke="#1b2836"/>
+          <text x="346" y="74" fill="#8ea1b6" font-size="10" letter-spacing="1.4">REACTIVE</text>
+          <text x="346" y="96" fill="#eaf1f9" font-size="14" font-weight="600">Lasna</text>
+          <text x="346" y="118" fill="#8ea1b6">react() · threshold · caps</text>
+
+          <rect x="638" y="46" width="230" height="96" rx="12" fill="url(#boxg)" stroke="#1b2836"/>
+          <text x="658" y="74" fill="#8ea1b6" font-size="10" letter-spacing="1.4">DESTINATION</text>
+          <text x="658" y="96" fill="#eaf1f9" font-size="14" font-weight="600">Sepolia</text>
+          <text x="658" y="118" fill="#8ea1b6">onAlert() · emit Alert</text>
+
+          <path d="M244 94h72" stroke="#54c8ff" stroke-width="1.8" marker-end="url(#arrow)"/>
+          <path d="M556 94h72" stroke="#54c8ff" stroke-width="1.8" marker-end="url(#arrow)"/>
+          <text x="244" y="84" fill="#8ea1b6" font-size="10">event</text>
+          <text x="556" y="84" fill="#8ea1b6" font-size="10">callback</text>
+        </g>
+      </svg>
+    </div>
+
+    <h2>How it works</h2>
+    <div class="steps">
+      <div class="step"><div class="n">01 · detect</div><h3>Origin event</h3><p>An ERC-20 <code>Transfer</code> from the guarded wallet. The subscription already filters by sender, so noise never reaches the contract.</p></div>
+      <div class="step"><div class="n">02 · decide</div><h3>Reactive check</h3><p><code>react()</code> validates source, amount and remaining quota; below-threshold transfers exit silently (reverts are charged too).</p></div>
+      <div class="step"><div class="n">03 · act</div><h3>On-chain alert</h3><p>The callback proxy delivers <code>onAlert()</code> on the destination chain and a notifier pushes it to the operator.</p></div>
+    </div>
+  </main>
+
+  <footer>
+    <div class="stack">
+      <span class="tech">Reactive Omni</span><span class="tech">Solidity 0.8.29</span>
+      <span class="tech">Foundry</span><span class="tech">GitHub Actions</span><span class="tech">ntfy</span>
+    </div>
+    <div>Live data via Blockscout v2, falling back to a public RPC · refresh 20s · <span id="synced2"></span></div>
+    <div class="foot-links" style="margin-top:10px">
+      <a href="https://github.com/artistlogic/guardian" target="_blank" rel="noreferrer">repository</a>
+      <a id="repo-readme" href="https://github.com/artistlogic/guardian#readme" target="_blank" rel="noreferrer">README & evidence</a>
+      <span>contract <code id="addr"></code></span>
+    </div>
+  </footer>
+</div>
 
 <script>
-const CALLBACK = "0xa070a801f8cd3f844e41e672d9e42380485cabe0"; // GuardianCallback (Sepolia)
+const CALLBACK = "0xa070a801f8cd3f844e41e672d9e42380485cabe0";
 const EXPLORER = "https://eth-sepolia.blockscout.com/tx/";
 const V2 = `https://eth-sepolia.blockscout.com/api/v2/addresses/${CALLBACK}/logs`;
 const RPC = "https://sepolia.gateway.tenderly.co";
@@ -59,76 +250,149 @@ document.getElementById("addr").textContent = CALLBACK;
 
 const word = (data, i) => BigInt("0x" + data.slice(2 + i * 64, 2 + (i + 1) * 64));
 const fmt = (v) => (Number(BigInt(v) / 10n ** (DECIMALS - 4n)) / 1e4).toFixed(4);
+const ago = (ts) => {
+  if (!ts) return "unknown time";
+  const s = Math.floor((Date.now() - new Date(ts).getTime()) / 1000);
+  if (s < 60) return `${s}s ago`;
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return new Date(ts).toLocaleDateString();
+};
 
 async function fromV2() {
   const r = await fetch(V2);
   if (!r.ok) throw new Error("v2 " + r.status);
   const j = await r.json();
-  return (j.items || []).map((it) => ({
-    data: it.data,
-    txHash: it.transaction_hash,
-    ts: it.block_timestamp,
-  }));
+  return (j.items || []).map((it) => ({ data: it.data, txHash: it.transaction_hash, ts: it.block_timestamp }));
 }
 
 async function fromRpc() {
   const head = await fetch(RPC, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
+    method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_blockNumber", params: [] }),
   }).then((r) => r.json());
   const latest = parseInt(head.result, 16);
   const from = "0x" + Math.max(latest - 5000, 0).toString(16);
   const res = await fetch(RPC, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      jsonrpc: "2.0", id: 1, method: "eth_getLogs",
-      params: [{ address: CALLBACK, fromBlock: from, toBlock: "latest" }],
-    }),
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_getLogs",
+      params: [{ address: CALLBACK, fromBlock: from, toBlock: "latest" }] }),
   }).then((r) => r.json());
-  return (res.result || []).map((l) => ({
-    data: l.data,
-    txHash: l.transactionHash,
-    ts: null,
-  }));
+  return (res.result || []).map((l) => ({ data: l.data, txHash: l.transactionHash, ts: null }));
 }
 
 async function load() {
   const list = document.getElementById("list");
   let logs = [];
-  try {
-    logs = await fromV2();
-  } catch (e) {
-    try { logs = await fromRpc(); } catch (e2) {
-      list.innerHTML = `<div class="empty">Failed to load: ${e.message} / ${e2.message}</div>`;
-      return;
-    }
+  try { logs = await fromV2(); }
+  catch (e) {
+    try { logs = await fromRpc(); }
+    catch (e2) { list.innerHTML = `<div class="empty">Failed to load: ${e.message} / ${e2.message}</div>`; return; }
   }
+  document.getElementById("synced").textContent = "updated " + new Date().toLocaleTimeString();
+  document.getElementById("synced2").textContent = "last refresh " + new Date().toLocaleTimeString();
+
   if (!logs.length) {
-    list.innerHTML = '<div class="empty">No alerts yet. Send a transfer from the watched wallet.</div>';
+    list.innerHTML = '<div class="empty">No alerts yet. Send a transfer from the guarded wallet.</div>';
     return;
   }
 
   let total = 0n;
-  const items = logs.map((log) => {
+  const cards = logs.map((log) => {
     const value = word(log.data, 2);
     const originTx = "0x" + word(log.data, 1).toString(16).padStart(64, "0");
     total += value;
-    const when = log.ts ? new Date(log.ts).toLocaleString() : "";
     return `<div class="item">
-      <div class="row"><span class="amt">${fmt(value)} D3RT</span><span class="hash">${when}</span></div>
-      <div class="hash">origin&nbsp;<a href="${EXPLORER}${originTx}" target="_blank" rel="noreferrer">${originTx}</a></div>
-      <div class="hash">callback&nbsp;<a href="${EXPLORER}${log.txHash}" target="_blank" rel="noreferrer">${log.txHash}</a></div>
+      <div class="row">
+        <span class="amt">${fmt(value)} D3RT</span>
+        <span class="when">${ago(log.ts)}</span>
+      </div>
+      <div class="hash"><span class="chip">origin</span><a href="${EXPLORER}${originTx}" target="_blank" rel="noreferrer">${originTx}</a></div>
+      <div class="hash"><span class="chip">callback</span><a href="${EXPLORER}${log.txHash}" target="_blank" rel="noreferrer">${log.txHash}</a></div>
     </div>`;
   });
 
-  list.innerHTML = items.join("");
+  list.innerHTML = cards.join("");
   document.getElementById("count").textContent = logs.length;
   document.getElementById("total").textContent = fmt(total);
-  const last = logs[0];
-  document.getElementById("latest").textContent = last.ts ? new Date(last.ts).toLocaleString() : "–";
+  document.getElementById("latest").textContent = logs[0].ts ? ago(logs[0].ts) : "–";
 }
+
+const SNIPPETS = {
+  react: {
+    title: "Watch → decide → request",
+    code: [
+`<span class="cm">// 1) cheap exits first: wrong source, wrong log type</span>`,
+`<span class="kw">function</span> <span class="fn">react</span>(LogRecord calldata log_) <span class="kw">external</span> onlySystem {`,
+`    <span class="kw">if</span> (log_.contractAddress != token) <span class="kw">return</span>;`,
+`    <span class="kw">if</span> (log_.opCode != <span class="num">3</span>) <span class="kw">return</span>;`,
+``,
+`    <span class="cm">// 2) business rules: threshold, dedupe, caps</span>`,
+`    uint256 value = abi.<span class="fn">decode</span>(log_.data, (uint256));`,
+`    <span class="kw">if</span> (value &lt; threshold) <span class="kw">return</span>;`,
+`    <span class="kw">if</span> (seen[log_.txHash]) <span class="kw">return</span>;`,
+``,
+`    <span class="cm">// 3) ask the system contract to deliver the callback</span>`,
+`    bytes memory payload = abi.<span class="fn">encodeWithSelector</span>(`,
+`        GuardianCallback.onAlert.<span class="fn">selector</span>,`,
+`        <span class="kw">address</span>(<span class="num">0</span>), log_.chainId, log_.txHash, effective, alerts`,
+`    );`,
+`    SYSTEM.<span class="fn">requestCallbackV_1_0</span>(config);`,
+`}`,
+    ],
+    trace: [
+      "Every matching log lands here — and nothing else does.",
+      "Below-threshold transfers exit with <b>return</b> (a revert would still be billed).",
+      "The same <b>txHash</b> can never be processed twice.",
+      "The payload carries the 4-byte selector so the proxy can dispatch it.",
+    ],
+  },
+  onalert: {
+    title: "Two locks, then record",
+    code: [
+`<span class="kw">function</span> <span class="fn">onAlert</span>(<span class="kw">address</span> reactive_, uint256 chainId_,`,
+`                   uint256 originTxHash_, uint256 value_,`,
+`                   uint256 alertIndex_)`,
+`    <span class="kw">external</span> onlyServiceProvider <span class="fn">onlyCallbackSender</span>(reactive_)`,
+`{`,
+`    <span class="cm">// both locks already passed: the proxy, and our reactive contract</span>`,
+`    count += <span class="num">1</span>;`,
+`    lastValue = value_;`,
+`    <span class="kw">emit</span> Alert(reactive_, chainId_, originTxHash_, value_, alertIndex_);`,
+`}`,
+    ],
+    trace: [
+      "Only the destination chain's callback proxy can call this.",
+      "The injected sender must be the authorized reactive contract.",
+      "Counter and last value are stored on-chain.",
+      "Emits <b>Alert</b> — that is the callback hash shown in the list above.",
+    ],
+  },
+};
+
+const codeEl = document.getElementById("code");
+function renderCode(key) {
+  const s = SNIPPETS[key];
+  codeEl.innerHTML = s.code
+    .map((line, i) => `<span class="ln">${i + 1}</span>${line || " "}`)
+    .join("\n");
+  codeEl.classList.remove("fadein");
+  void codeEl.offsetWidth;
+  codeEl.classList.add("fadein");
+  document.getElementById("trace-title").textContent = s.title;
+  document.getElementById("trace").innerHTML = s.trace.map((t) => `<li>${t}</li>`).join("");
+  document.querySelectorAll(".tab").forEach((t) =>
+    t.setAttribute("aria-selected", String(t.dataset.tab === key))
+  );
+}
+document.querySelectorAll(".tab").forEach((t) =>
+  t.addEventListener("click", () => renderCode(t.dataset.tab))
+);
+window.addEventListener("keydown", (e) => {
+  if (e.key === "1") renderCode("react");
+  if (e.key === "2") renderCode("onalert");
+});
+renderCode("react");
 
 load();
 setInterval(load, 20000);

@@ -20,6 +20,12 @@
 
 The whole point: **alerting is done on-chain, by the network, not by a bot you must host.**
 
+<img src="docs/architecture.svg" alt="Origin event on Sepolia → reactive contract on Lasna → callback on Sepolia" width="100%">
+
+**10-second proof:** [live dashboard](https://artistlogic.github.io/guardian/) ·
+[origin tx](https://eth-sepolia.blockscout.com/tx/0x632fb41ed499697eef05a0b5638984dd8161dc4f1a3cf1422c6fe1fad2d8494c) ·
+[callback tx](https://eth-sepolia.blockscout.com/tx/0x3d673287f16d7a4e63526053c4061905360fe904ec615fca1d07fa343b7ce926)
+
 ### The problem it solves
 
 Self-custody wallets keep growing, but anomalous outflows usually happen when nobody is
@@ -79,6 +85,35 @@ watched wallet            Sepolia        Lasna                    Sepolia
   - only transfers from the watched wallet trigger (subscription filter + in-contract checks),
   - each source txHash is processed once (`seen` mapping),
   - per-alert value cap and total value cap; `maxAlerts` auto-unsubscribes; owner can `pause()`.
+
+## 3b. What works today
+
+**Real, on testnets (clickable above):**
+
+- Source transfer → `react()` → destination `Alert`, all three transactions verifiable
+- A below-threshold transfer is ignored (negative check in §2)
+- Subscription filter on `topic1 = guarded wallet`; threshold, dedupe, per-alert and total caps
+- 13 Foundry tests (`forge test -vv`), CI green on every push
+- Off-chain notifier pushes each `Alert` to an ntfy topic (web/app)
+
+**Demo-only in the recording:**
+
+- The transfer amount and timing are chosen for the video; the on-chain transactions are real
+- The notifier runs on a laptop during the demo (a production setup would run it as a service)
+
+## 3c. Hacky parts (things we learned the hard way)
+
+- **Callback payloads need the 4-byte selector.** `abi.encode(...)` without
+  `abi.encodeWithSelector(Target.fn.selector, ...)` produces a call that cannot be dispatched;
+  the reactive transaction succeeds, the callback silently never executes.
+- **Contract deployment can fail at `eth_estimateGas`** on the Lasna node once the contract grows.
+  We pass an explicit `--gas-limit` and pre-fund the wallet before deploying.
+- **A reactive contract is never "deprecated".** Until it unsubscribes it keeps receiving events
+  and being billed. Older deployments are stopped with `pause()` (visible on-chain).
+- **Running out of funds fails silently** (`debt > 0` stops execution without an error), so the
+  recovery path (`depositTo`) is documented in §5b.
+- **Network selection matters more than the code.** Public RPC endpoints were intermittently
+  unreachable; Telegram's API is not reachable from this network, so the notifier uses ntfy instead.
 
 ## 4. Try it
 

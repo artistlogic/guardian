@@ -25,7 +25,7 @@ contract GuardianReactive is AbstractReactive {
     uint256 public immutable originChainId;
     address public immutable token;
     address public immutable watch;
-    uint256 public immutable threshold;
+    uint256 public threshold;
     uint256 public immutable maxAlerts;
     uint256 public immutable maxValuePerAlert;
     uint256 public immutable maxTotalValue;
@@ -43,6 +43,7 @@ contract GuardianReactive is AbstractReactive {
     mapping(uint256 => bool) public seen;
 
     event RecipientSet(address indexed recipient);
+    event ThresholdSet(uint256 threshold);
     event Alerted(uint256 value, uint256 originTxHash, uint256 alertIndex);
     event ValueCapped(uint256 rawValue, uint256 cappedValue);
     event Unsubscribed(uint256 alerts, uint256 totalValue);
@@ -141,6 +142,13 @@ contract GuardianReactive is AbstractReactive {
         require(msg.sender == owner, "not owner");
         recipient = recipient_;
         emit RecipientSet(recipient_);
+    }
+
+    /// @notice Updates the alert threshold (owner only).
+    function setThreshold(uint256 threshold_) external {
+        require(msg.sender == owner, "not owner");
+        threshold = threshold_;
+        emit ThresholdSet(threshold_);
     }
 
     /// @notice Emergency stop: unsubscribe and ignore further events.

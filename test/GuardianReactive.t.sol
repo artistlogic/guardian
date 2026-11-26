@@ -117,4 +117,20 @@ contract GuardianReactiveTest is Test {
         _react(9, 10e18);
         assertEq(guardian.alerts(), 0);
     }
+
+    /// Owner can change the threshold; new value is enforced immediately.
+    function test_ThresholdConfigurable() public {
+        guardian.setThreshold(20e18);
+        _react(10, 10e18); // below the new threshold
+        assertEq(guardian.alerts(), 0);
+        _react(11, 25e18); // above
+        assertEq(guardian.alerts(), 1);
+    }
+
+    /// Non-owner cannot change the threshold.
+    function test_SetThresholdOnlyOwner() public {
+        vm.prank(address(0xBEEF));
+        vm.expectRevert(bytes("not owner"));
+        guardian.setThreshold(1);
+    }
 }

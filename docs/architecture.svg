@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 200" role="img" aria-label="Origin event on Sepolia, reactive contract on Lasna, callback on Sepolia">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0L10 5L0 10z" fill="#54c8ff"/>
+    </marker>
+    <linearGradient id="box" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#131e2b"/><stop offset="1" stop-color="#0b131c"/>
+    </linearGradient>
+    <linearGradient id="line" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#54c8ff"/><stop offset="1" stop-color="#8b7bff"/>
+    </linearGradient>
+  </defs>
+  <rect width="880" height="200" fill="#070b10"/>
+  <g font-family="ui-sans-serif,system-ui,Segoe UI,Roboto" font-size="12">
+    <rect x="16" y="48" width="236" height="104" rx="14" fill="url(#box)" stroke="#1b2836"/>
+    <text x="38" y="76" fill="#8ea1b6" font-size="10" letter-spacing="1.5">ORIGIN</text>
+    <text x="38" y="100" fill="#eaf1f9" font-size="15" font-weight="600">Sepolia</text>
+    <text x="38" y="122" fill="#8ea1b6">ERC-20 Transfer (guarded wallet)</text>
+    <text x="38" y="140" fill="#5c7488" font-size="10">emit Transfer</text>
+
+    <rect x="322" y="48" width="236" height="104" rx="14" fill="url(#box)" stroke="#1b2836"/>
+    <text x="344" y="76" fill="#8ea1b6" font-size="10" letter-spacing="1.5">REACTIVE</text>
+    <text x="344" y="100" fill="#eaf1f9" font-size="15" font-weight="600">Lasna</text>
+    <text x="344" y="122" fill="#8ea1b6">react(): source, threshold, caps</text>
+    <text x="344" y="140" fill="#5c7488" font-size="10">onlySystem</text>
+
+    <rect x="628" y="48" width="236" height="104" rx="14" fill="url(#box)" stroke="#1b2836"/>
+    <text x="650" y="76" fill="#8ea1b6" font-size="10" letter-spacing="1.5">DESTINATION</text>
+    <text x="650" y="100" fill="#eaf1f9" font-size="15" font-weight="600">Sepolia</text>
+    <text x="650" y="122" fill="#8ea1b6">onAlert() via callback proxy</text>
+    <text x="650" y="140" fill="#5c7488" font-size="10">emit Alert</text>
+
+    <path d="M252 100h60" stroke="url(#line)" stroke-width="2" marker-end="url(#a)"/>
+    <path d="M558 100h60" stroke="url(#line)" stroke-width="2" marker-end="url(#a)"/>
+    <text x="252" y="90" fill="#8ea1b6" font-size="10">subscribe match</text>
+    <text x="558" y="90" fill="#8ea1b6" font-size="10">request callback</text>
+
+    <text x="16" y="182" fill="#5c7488" font-size="10">Guarded wallet → token transfer → reactive decision → on-chain alert → off-chain notification (ntfy)</text>
+  </g>
+</svg>
