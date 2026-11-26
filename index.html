@@ -334,7 +334,7 @@
     <div class="stats">
       <div class="stat hi"><b id="count">–</b><span>alerts recorded</span><small>&nbsp;</small></div>
       <div class="stat"><b id="total">–</b><span>total flagged (D3RT)</span><small>&nbsp;</small></div>
-      <div class="stat"><b id="latest">–</b><span>latest alert</span><small id="synced"></small></div>
+      <div class="stat"><b id="latest">–</b><span>latest alert</span><small id="latest-exact"></small></div>
     </div>
   </header>
 
@@ -508,8 +508,8 @@ async function load() {
       catch (e3) { list.innerHTML = `<div class="empty">Failed to load on-chain data.<br><small>${e.message} / ${e2.message} / ${e3.message}</small></div>`; return; }
     }
   }
-  document.getElementById("synced").textContent = "updated " + new Date().toLocaleTimeString();
-  document.getElementById("synced2").textContent = "source: " + source;
+  document.getElementById("synced2").textContent =
+    "updated " + new Date().toLocaleTimeString() + " · source: " + source;
 
   if (!logs.length) {
     list.innerHTML = '<div class="empty">No alerts yet. Send a transfer from the guarded wallet.</div>';
@@ -717,6 +717,9 @@ function renderList() {
   document.getElementById("count").textContent = CURRENT.length;
   document.getElementById("total").textContent = fmt(total);
   document.getElementById("latest").textContent = CURRENT[0].ts ? ago(CURRENT[0].ts) : "–";
+  document.getElementById("latest-exact").textContent = CURRENT[0].ts
+    ? new Date(CURRENT[0].ts).toLocaleString()
+    : "";
   document.getElementById("meta").textContent = `${CURRENT.length} alerts · ${keys.length} day(s)`;
 
   if (CURRENT.length > prevCount && prevCount > 0) {
