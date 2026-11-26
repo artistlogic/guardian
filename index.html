@@ -143,13 +143,49 @@
   @keyframes shimmer{0%{background-position:100% 0}100%{background-position:0 0}}
   .item{animation:rise .18s ease both}
   @keyframes rise{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+  .item.flash{border-color:rgba(63,224,161,.55);
+    box-shadow:0 0 0 1px rgba(63,224,161,.22),0 0 26px rgba(63,224,161,.10);
+    animation:flashPulse 1.5s ease}
+  @keyframes flashPulse{0%{background:rgba(63,224,161,.10)}100%{background:linear-gradient(180deg,var(--card),#0c131c)}}
+  .reveal{opacity:0;transform:translateY(10px);transition:opacity .45s ease,transform .45s ease}
+  .reveal.in{opacity:1;transform:none}
+
+  /* ── sentry: radar logo, integrations, watch log ── */
+  .radar{position:relative;width:38px;height:38px;display:grid;place-items:center}
+  .radar:before{content:"";position:absolute;inset:0;border-radius:50%;
+    border:1px solid rgba(84,200,255,.35);animation:ping 2.6s ease-out infinite}
+  .radar:after{content:"";position:absolute;inset:6px;border-radius:50%;
+    border:1px solid rgba(139,123,255,.28);animation:ping 2.6s .9s ease-out infinite}
+  @keyframes ping{0%{transform:scale(.6);opacity:.9}100%{transform:scale(1.35);opacity:0}}
+  .integrations{display:flex;gap:8px;flex-wrap:wrap;margin:16px 0 0;color:var(--muted);font-size:12px}
+  .integrations b{color:var(--fg);font-weight:600}
+  .integrations span{border:1px solid var(--line);border-radius:999px;padding:3px 10px}
+
+  .log{position:relative;margin-left:6px;padding-left:20px;border-left:1px solid var(--line)}
+  .day{position:relative;margin:18px 0 10px;font:600 11px/1 ui-monospace,monospace;
+    letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+  .day:before{content:"";position:absolute;left:-26px;top:-1px;width:9px;height:9px;border-radius:50%;
+    background:var(--accent);box-shadow:0 0 0 3px rgba(84,200,255,.12)}
+  .log .item{position:relative}
+  .log .item:before{content:"";position:absolute;left:-25px;top:20px;width:7px;height:7px;border-radius:50%;
+    background:#2a4054;border:1px solid var(--line)}
+  .kind{font:600 10px/1 ui-monospace,monospace;letter-spacing:.1em;text-transform:uppercase;
+    color:#7fe3b4;border:1px solid rgba(63,224,161,.35);border-radius:5px;padding:2px 7px;background:rgba(63,224,161,.06)}
+  .older{font:600 11px/1 ui-monospace,monospace;color:var(--muted);background:transparent;
+    border:1px dashed var(--line);border-radius:10px;padding:10px 12px;cursor:pointer;margin:4px 0 8px}
+  .older:hover{color:var(--fg);border-color:rgba(84,200,255,.35)}
+  .meter{height:3px;border-radius:999px;background:#16222f;margin-top:11px;overflow:hidden}
+  .meter i{display:block;height:100%;border-radius:999px;
+    background:linear-gradient(90deg,var(--accent),var(--accent2));
+    box-shadow:0 0 12px rgba(84,200,255,.35);transition:width .5s ease}
+  .item:hover .meter i{filter:brightness(1.15)}
 </style>
 </head>
 <body>
 <div class="wrap">
   <header>
     <div class="brand">
-      <svg width="34" height="34" viewBox="0 0 48 48" aria-hidden="true">
+      <div class="radar"><svg width="34" height="34" viewBox="0 0 48 48" aria-hidden="true">
         <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
           <stop offset="0" stop-color="#54c8ff"/><stop offset="1" stop-color="#8b7bff"/>
         </linearGradient></defs>
@@ -157,7 +193,7 @@
               fill="none" stroke="url(#g)" stroke-width="2.6"/>
         <path d="M17 24h4l2.5-6 3.5 12 2.5-6h4" fill="none" stroke="url(#g)"
               stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
-      </svg>
+      </svg></div>
       <span class="name">Sentry</span>
       <span class="pill"><span class="dot"></span>Sepolia · Reactive Omni</span>
     </div>
@@ -174,6 +210,12 @@
       <a class="btn" href="https://ntfy.sh/guardian-2026" target="_blank" rel="noreferrer">Notification channel</a>
     </div>
 
+    <div class="integrations">
+      <span>drops into <b>any ERC-20</b></span>
+      <span>any <b>destination chain</b></span>
+      <span>no server · no hosted key</span>
+    </div>
+
     <div class="stats">
       <div class="stat hi"><b id="count">–</b><span>alerts recorded</span><small>&nbsp;</small></div>
       <div class="stat"><b id="total">–</b><span>total flagged (D3RT)</span><small>&nbsp;</small></div>
@@ -182,7 +224,7 @@
   </header>
 
   <main>
-    <h2>Alert history</h2>
+    <h2>Watch log</h2>
     <div class="list-head">
       <span class="count" id="meta">–</span>
       <div class="refresh">
@@ -245,13 +287,6 @@
           <text x="556" y="84" fill="#8ea1b6" font-size="10">callback</text>
         </g>
       </svg>
-    </div>
-
-    <h2>How it works</h2>
-    <div class="steps">
-      <div class="step"><div class="n">01 · detect</div><h3>Origin event</h3><p>An ERC-20 <code>Transfer</code> from the guarded wallet. The subscription already filters by sender, so noise never reaches the contract.</p></div>
-      <div class="step"><div class="n">02 · decide</div><h3>Reactive check</h3><p><code>react()</code> validates source, amount and remaining quota; below-threshold transfers exit silently (reverts are charged too).</p></div>
-      <div class="step"><div class="n">03 · act</div><h3>On-chain alert</h3><p>The callback proxy delivers <code>onAlert()</code> on the destination chain and a notifier pushes it to the operator.</p></div>
     </div>
   </main>
 
@@ -432,39 +467,71 @@ window.addEventListener("keydown", (e) => {
 });
 renderCode("react");
 
-/* ── list state, copy buttons, refresh countdown ── */
-let CURRENT = [], SHOWN = 8, PAGE = 8, nextAt = 0;
+/* ── list state: day-grouped watch log, copy buttons, refresh countdown ── */
+let CURRENT = [], SHOWN_DAYS = 2, nextAt = 0, prevCount = 0, CURRENT_MAX = 0n;
 
 function valueOf(log) { return log._value ? BigInt(log._value) : word(log.data, 2); }
 function originOf(log) { return log._origin || ("0x" + word(log.data, 1).toString(16).padStart(64, "0")); }
+function dayKey(ts) {
+  if (!ts) return "recent";
+  return new Date(ts).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "2-digit" });
+}
 
 function cardOf(log) {
   const originTx = originOf(log);
+  const v = valueOf(log);
+  const pct = CURRENT_MAX > 0n ? Number((v * 100n) / CURRENT_MAX) : 0;
   return `<div class="item">
     <div class="row">
-      <span class="amt">${fmt(valueOf(log))} D3RT</span>
+      <span><span class="kind">outflow</span> <span class="amt">${fmt(v)} D3RT</span></span>
       <span class="when">${ago(log.ts)}</span>
     </div>
     <div class="hash"><span class="chip">origin</span><a href="${EXPLORER}${originTx}" target="_blank" rel="noreferrer">${originTx}</a><button class="copy" data-copy="${originTx}">copy</button></div>
     <div class="hash"><span class="chip">callback</span><a href="${EXPLORER}${log.txHash}" target="_blank" rel="noreferrer">${log.txHash}</a><button class="copy" data-copy="${log.txHash}">copy</button></div>
+    <div class="meter"><i style="width:${pct}%"></i></div>
   </div>`;
 }
 
 function renderList() {
   const list = document.getElementById("list");
   const total = CURRENT.reduce((a, l) => a + valueOf(l), 0n);
-  const items = CURRENT.slice(0, SHOWN).map(cardOf);
-  if (CURRENT.length > SHOWN) {
-    items.push(`<button class="more" id="more" type="button">Show all ${CURRENT.length} alerts</button>`);
+  CURRENT_MAX = CURRENT.reduce((m, l) => (valueOf(l) > m ? valueOf(l) : m), 0n);
+
+  const groups = new Map();
+  for (const log of CURRENT) {
+    const k = dayKey(log.ts);
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(log);
   }
-  list.innerHTML = items.join("");
-  const more = document.getElementById("more");
-  if (more) more.onclick = () => { SHOWN = CURRENT.length; renderList(); };
+  const keys = [...groups.keys()];
+  const visible = keys.slice(0, SHOWN_DAYS);
+
+  let html = '<div class="log">';
+  for (const k of visible) {
+    html += `<div class="day">${k}</div>`;
+    html += groups.get(k).map(cardOf).join("");
+  }
+  html += "</div>";
+  if (keys.length > visible.length) {
+    html += `<button class="older" id="older" type="button">Show older (${keys.length - visible.length} more days)</button>`;
+  }
+  list.innerHTML = html;
+
+  const older = document.getElementById("older");
+  if (older) older.onclick = () => { SHOWN_DAYS = keys.length; renderList(); };
 
   document.getElementById("count").textContent = CURRENT.length;
   document.getElementById("total").textContent = fmt(total);
   document.getElementById("latest").textContent = CURRENT[0].ts ? ago(CURRENT[0].ts) : "–";
-  document.getElementById("meta").textContent = `showing ${Math.min(SHOWN, CURRENT.length)} of ${CURRENT.length}`;
+  document.getElementById("meta").textContent = `${CURRENT.length} alerts · ${keys.length} day(s)`;
+
+  if (CURRENT.length > prevCount && prevCount > 0) {
+    const first = list.querySelector(".item");
+    if (first) { first.classList.add("flash"); setTimeout(() => first.classList.remove("flash"), 1600); }
+    document.title = "🚨 New alert · Sentry";
+    setTimeout(() => { document.title = "Sentry · On-chain Wallet Alerting"; }, 5000);
+  }
+  prevCount = CURRENT.length;
 }
 
 document.getElementById("list").addEventListener("click", async (e) => {
@@ -497,6 +564,14 @@ setInterval(() => {
 }, 1000);
 
 refresh(false);
+
+/* gentle scroll reveal for section headers and panels */
+const revealEls = document.querySelectorAll(".stats, .arch, .panel, .trace, .list-head");
+revealEls.forEach((el) => el.classList.add("reveal"));
+const io = new IntersectionObserver((entries) => {
+  entries.forEach((en) => { if (en.isIntersecting) { en.target.classList.add("in"); io.unobserve(en.target); } });
+}, { threshold: 0.12 });
+revealEls.forEach((el) => io.observe(el));
 </script>
 </body>
 </html>
