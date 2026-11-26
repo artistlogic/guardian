@@ -326,7 +326,7 @@
           <button class="ghost" id="cfg-save-rules" type="button">save display rules</button>
         </div>
 
-        <div class="hint">Validate reads the token contract from Sepolia and generates the config plus deploy command. The contracts are deployed by that command, not from this page.</div>
+        <div class="hint">These fields build a config for a <b>new</b> deployment and do not change the dashboard above, which keeps showing the current instance (see footer). The contracts are deployed by the generated command, not from this page.</div>
       </div>
     </aside>
     <div class="backdrop" id="backdrop"></div>
@@ -415,13 +415,19 @@
     <div class="foot-links" style="margin-top:10px">
       <a href="https://github.com/artistlogic/guardian" target="_blank" rel="noreferrer">repository</a>
       <a id="repo-readme" href="https://github.com/artistlogic/guardian#readme" target="_blank" rel="noreferrer">README & evidence</a>
-      <span>contract <code id="addr"></code></span>
+    </div>
+    <div class="foot-links" style="margin-top:8px">
+      <span>current instance → reactive <code id="addr-r"></code></span>
+      <span>callback <code id="addr-c"></code></span>
+      <span>token <code id="addr-t"></code></span>
     </div>
   </footer>
 </div>
 
 <script>
 const CALLBACK = "0xa070a801f8cd3f844e41e672d9e42380485cabe0";
+const REACTIVE = "0xd9cda08baac9de9cbe658e553a8fd7112c7f7034";
+const TOKEN = "0x259d2fb64231d85e639d1074fa724bcdf29a4ed9";
 const EXPLORER = "https://eth-sepolia.blockscout.com/tx/";
 const V2 = `https://eth-sepolia.blockscout.com/api/v2/addresses/${CALLBACK}/logs`;
 const RPC = "https://sepolia.gateway.tenderly.co";
@@ -429,7 +435,9 @@ const DECIMALS = 18n;
 
 document.getElementById("contract").href = `https://eth-sepolia.blockscout.com/address/${CALLBACK}`;
 document.getElementById("contract").textContent = CALLBACK.slice(0, 10) + "…";
-document.getElementById("addr").textContent = CALLBACK;
+document.getElementById("addr-r").textContent = REACTIVE.slice(0, 8) + "…";
+document.getElementById("addr-c").textContent = CALLBACK.slice(0, 8) + "…";
+document.getElementById("addr-t").textContent = TOKEN.slice(0, 8) + "…";
 
 const word = (data, i) => BigInt("0x" + data.slice(2 + i * 64, 2 + (i + 1) * 64));
 const fmt = (v) => (Number(BigInt(v) / 10n ** (DECIMALS - 4n)) / 1e4).toFixed(4);
