@@ -138,7 +138,7 @@ cast call <contract> "alerts()(uint256)"
 
 ```bash
 forge test -vv
-# 7 passed
+# 13 passed
 ```
 
 | Test | Verifies |
@@ -150,6 +150,12 @@ forge test -vv
 | `test_PerAlertCap` | per-alert cap |
 | `test_TotalCapStops` | total cap stops processing |
 | `test_PauseStops` | pause stops processing |
+| `test_ThresholdConfigurable` | owner can change the threshold |
+| `test_SetThresholdOnlyOwner` | non-owner cannot change it |
+| `test_OnAlertHappyPath` | callback proxy delivers an alert |
+| `test_OnAlertRejectsNonProxy` | direct calls are rejected |
+| `test_OnAlertRejectsWrongSender` | only the authorized reactive contract is accepted |
+| `test_OnAlertAccumulates` | alerts accumulate |
 
 ## 7. Verify on-chain
 
@@ -176,7 +182,7 @@ Parts drafted with AI assistance (Claude/DeepSeek) and how they were verified:
 
 | Part | AI involvement | Verification |
 |---|---|---|
-| Contract skeleton and comments | drafted with AI, reviewed line by line | `forge build` + `forge test` (7 tests) + on-chain runs |
+| Contract skeleton and comments | drafted with AI, reviewed line by line | `forge build` + `forge test` (13 tests) + on-chain runs |
 | Tests | drafted with AI | `forge test -vv` green locally; logic re-checked against contract behavior |
 | README structure | drafted with AI | every command executed by hand on testnets |
 | On-chain evidence (§2) | produced by real transactions | independent reads via `cast` + explorers |

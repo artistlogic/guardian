@@ -123,7 +123,7 @@ cast call <合约> "alerts()(uint256)"
 ## 6. 测试
 
 ```bash
-forge test -vv   # 7 passed
+forge test -vv   # 13 passed
 ```
 
 | 测试 | 验证 |
@@ -135,6 +135,12 @@ forge test -vv   # 7 passed
 | `test_PerAlertCap` | 单笔封顶 |
 | `test_TotalCapStops` | 累计到顶停止 |
 | `test_PauseStops` | 暂停后不再处理 |
+| `test_ThresholdConfigurable` | owner 可修改阈值 |
+| `test_SetThresholdOnlyOwner` | 非 owner 不能修改 |
+| `test_OnAlertHappyPath` | 代理投递回调正常计数 |
+| `test_OnAlertRejectsNonProxy` | 非代理直接调用被拒 |
+| `test_OnAlertRejectsWrongSender` | 只接受授权 reactive |
+| `test_OnAlertAccumulates` | 多次回调累计 |
 
 ## 7. 链上验证
 
@@ -159,7 +165,7 @@ cast logs --rpc-url https://ethereum-sepolia-rpc.publicnode.com --address <GUARD
 
 | 部分 | AI 参与 | 验证方式 |
 |---|---|---|
-| 合约骨架与注释 | AI 起草，人工逐行审阅 | `forge build` + `forge test`（7 项）+ 链上实际运行 |
+| 合约骨架与注释 | AI 起草，人工逐行审阅 | `forge build` + `forge test`（13 项）+ 链上实际运行 |
 | 测试 | AI 起草 | `forge test -vv` 全绿；逐条对照合约行为复核 |
 | README 结构 | AI 起草 | 所有命令均手工在测试网执行过 |
 | 第 2 节链上证据 | 真实交易产生 | 用 `cast` 与区块浏览器独立核对 |
