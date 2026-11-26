@@ -307,7 +307,7 @@
       <span class="count" id="meta">–</span>
       <span class="rules" id="rules"></span>
       <div class="refresh">
-        <button class="gear" id="gear" type="button" title="edit risk tiers">⚙</button>
+        <button class="gear" id="gear" type="button" title="edit risk tiers (display only, not on-chain)">⚙</button>
         <span class="ring" id="ring"></span>
         <span class="when" id="countdown"></span>
         <button class="ghost" id="refresh-btn" type="button">refresh</button>
@@ -571,6 +571,7 @@ function dayKey(ts) {
   return new Date(ts).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "2-digit" });
 }
 const THRESHOLD = 5n * 10n ** 18n;
+let FREQ_1H = 0; // alerts within the last hour, computed on each render
 
 /* risk tiers are configurable: ?high=2&crit=3 or the ⚙ button (saved in localStorage) */
 const RISK = (() => {
@@ -588,9 +589,10 @@ const RISK = (() => {
 
 function sevOf(v) {
   const ratio = Number((v * 100n) / THRESHOLD) / 100;
-  if (ratio >= RISK.crit) return "critical";
-  if (ratio >= RISK.high) return "high";
-  return "elevated";
+  let tier = ratio >= RISK.crit ? 2 : ratio >= RISK.high ? 1 : 0;
+  // frequency escalation: 3+ alerts within the last hour raises the tier by one
+  if (FREQ_1H >= 3) tier = Math.min(tier + 1, 2);
+  return ["elevated", "high", "critical"][tier];
 }
 
 function renderRules() {
@@ -600,7 +602,8 @@ function renderRules() {
     `risk = amount ÷ threshold(5 D3RT): ` +
     `<span class="sev e">elevated &lt;${RISK.high}×</span> · ` +
     `<span class="sev h">high ${RISK.high}–${RISK.crit}×</span> · ` +
-    `<span class="sev c">critical ≥${RISK.crit}×</span>`;
+    `<span class="sev c">critical ≥${RISK.crit}×</span>` +
+    ` <span style="color:#5c7488">· 3+ alerts/hour escalates one tier</span>`;
 }
 function avatarOf(addr) {
   let h = 0;
@@ -636,6 +639,8 @@ function renderList() {
   const list = document.getElementById("list");
   const total = CURRENT.reduce((a, l) => a + valueOf(l), 0n);
   CURRENT_MAX = CURRENT.reduce((m, l) => (valueOf(l) > m ? valueOf(l) : m), 0n);
+  const hourAgo = Date.now() - 3600 * 1000;
+  FREQ_1H = CURRENT.filter((l) => l.ts && new Date(l.ts).getTime() >= hourAgo).length;
 
   const groups = new Map();
   for (const log of CURRENT) {
