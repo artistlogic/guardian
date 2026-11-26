@@ -272,25 +272,48 @@ async function fromRpc() {
     body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_blockNumber", params: [] }),
   }).then((r) => r.json());
   const latest = parseInt(head.result, 16);
-  const from = "0x" + Math.max(latest - 5000, 0).toString(16);
-  const res = await fetch(RPC, {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_getLogs",
-      params: [{ address: CALLBACK, fromBlock: from, toBlock: "latest" }] }),
-  }).then((r) => r.json());
-  return (res.result || []).map((l) => ({ data: l.data, txHash: l.transactionHash, ts: null }));
+  const out = [];
+  const CHUNK = 9000, SPAN = 45000;
+  for (let end = latest; end > latest - SPAN; end -= CHUNK) {
+    const from = Math.max(end - CHUNK, 0);
+    const res = await fetch(RPC, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_getLogs",
+        params: [{ address: CALLBACK, fromBlock: "0x" + from.toString(16), toBlock: "0x" + end.toString(16) }] }),
+    }).then((r) => r.json());
+    for (const l of res.result || []) {
+      out.push({ data: l.data, txHash: l.transactionHash, ts: null });
+    }
+  }
+  return out;
+}
+
+async function fromSnapshot() {
+  const r = await fetch("./data/alerts.json?t=" + Date.now());
+  if (!r.ok) throw new Error("snapshot " + r.status);
+  const j = await r.json();
+  return (j.items || []).map((it) => ({
+    data: "0x" + BigInt(it.value).toString(16).padStart(64, "0"),
+    txHash: it.callbackTx,
+    ts: it.ts ? new Date(it.ts * 1000).toISOString() : null,
+    _value: it.value,
+    _origin: it.originTx,
+  }));
 }
 
 async function load() {
   const list = document.getElementById("list");
-  let logs = [];
+  let logs = [], source = "live";
   try { logs = await fromV2(); }
   catch (e) {
     try { logs = await fromRpc(); }
-    catch (e2) { list.innerHTML = `<div class="empty">Failed to load: ${e.message} / ${e2.message}</div>`; return; }
+    catch (e2) {
+      try { logs = await fromSnapshot(); source = "snapshot"; }
+      catch (e3) { list.innerHTML = `<div class="empty">Failed to load on-chain data.<br><small>${e.message} / ${e2.message} / ${e3.message}</small></div>`; return; }
+    }
   }
   document.getElementById("synced").textContent = "updated " + new Date().toLocaleTimeString();
-  document.getElementById("synced2").textContent = "last refresh " + new Date().toLocaleTimeString();
+  document.getElementById("synced2").textContent = "source: " + source;
 
   if (!logs.length) {
     list.innerHTML = '<div class="empty">No alerts yet. Send a transfer from the guarded wallet.</div>';
@@ -299,8 +322,8 @@ async function load() {
 
   let total = 0n;
   const cards = logs.map((log) => {
-    const value = word(log.data, 2);
-    const originTx = "0x" + word(log.data, 1).toString(16).padStart(64, "0");
+    const value = log._value ? BigInt(log._value) : word(log.data, 2);
+    const originTx = log._origin || ("0x" + word(log.data, 1).toString(16).padStart(64, "0"));
     total += value;
     return `<div class="item">
       <div class="row">
