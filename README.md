@@ -1,7 +1,10 @@
-# Guardian · On-chain Wallet Guardian
+# Sentry · On-chain Wallet Alerting
 
 > **Watch a wallet's outgoing token transfers. When one exceeds the threshold,
 > Reactive executes an on-chain alert on the destination chain — no server, no key hosting.**
+>
+> **Positioning**: a lightweight cross-chain alerting middleware built on Reactive Omni —
+> detects, records and notifies; it never blocks or moves funds.
 >
 > [中文说明 / Chinese docs](README.zh.md)
 

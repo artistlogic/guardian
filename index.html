@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Guardian · Watched Wallet Alerts</title>
+<title>Sentry · Watched Wallet Alerts</title>
 <style>
   :root { --bg:#0b0f14; --card:#131a22; --line:#1f2a36; --fg:#e6edf3; --muted:#8b98a5; --accent:#4cc2ff; --warn:#ffb020; }
   * { box-sizing:border-box; }
@@ -27,7 +27,7 @@
 </head>
 <body>
 <header>
-  <h1>🛡️ Guardian · Watched Wallet Alerts</h1>
+  <h1>🛡️ Sentry · Watched Wallet Alerts</h1>
   <div class="sub">
     On-chain alert log on Sepolia, produced by Reactive <code>react()</code>.
     <a id="contract" href="#" target="_blank" rel="noreferrer"></a>
@@ -58,7 +58,7 @@ document.getElementById("contract").textContent = CALLBACK.slice(0, 10) + "…";
 document.getElementById("addr").textContent = CALLBACK;
 
 const word = (data, i) => BigInt("0x" + data.slice(2 + i * 64, 2 + (i + 1) * 64));
-const fmt = (v) => (Number(v / 10n ** (DECIMALS - 4n)) / 1e4).toFixed(4);
+const fmt = (v) => (Number(BigInt(v) / 10n ** (DECIMALS - 4n)) / 1e4).toFixed(4);
 
 async function fromV2() {
   const r = await fetch(V2);
