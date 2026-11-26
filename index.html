@@ -276,8 +276,9 @@
     </div>
 
     <details class="cfg" id="cfg">
-      <summary>Configure a new Sentry instance →</summary>
+      <summary>Settings · configure a deployment and display rules →</summary>
       <div class="body">
+        <div class="hint" style="color:var(--muted);text-transform:uppercase;letter-spacing:.1em;font-size:10px">deployment</div>
         <div class="grid">
           <label>token (ERC-20 on Sepolia)<input id="cfg-token" placeholder="0x…" value="0x259d2fb64231d85e639d1074fa724bcdf29a4ed9"></label>
           <label>guarded wallet<input id="cfg-watch" placeholder="0x…" value=""></label>
@@ -285,12 +286,21 @@
           <label>alert cap<input id="cfg-cap" value="5"></label>
         </div>
         <div class="actions">
-          <button class="ghost" id="cfg-check" type="button">check token</button>
-          <button class="ghost" id="cfg-gen" type="button">generate config</button>
+          <button class="ghost" id="cfg-gen" type="button">validate &amp; generate config</button>
           <span class="status" id="cfg-status"></span>
         </div>
         <pre id="cfg-out" style="display:none"></pre>
-        <div class="hint">Checking reads the token contract from Sepolia. Generating produces a config file and the deploy command; the contracts are deployed by that command, not from this page.</div>
+
+        <div class="hint" style="color:var(--muted);text-transform:uppercase;letter-spacing:.1em;font-size:10px;margin-top:6px">display rules (this page only, not on-chain)</div>
+        <div class="grid">
+          <label>high starts at (× threshold)<input id="cfg-high"></label>
+          <label>critical starts at (× threshold)<input id="cfg-crit"></label>
+        </div>
+        <div class="actions">
+          <button class="ghost" id="cfg-save-rules" type="button">save display rules</button>
+        </div>
+
+        <div class="hint">Validate reads the token contract from Sepolia and generates the config plus deploy command. The contracts are deployed by that command, not from this page.</div>
       </div>
     </details>
 
@@ -307,7 +317,6 @@
       <span class="count" id="meta">–</span>
       <span class="rules" id="rules"></span>
       <div class="refresh">
-        <button class="gear" id="gear" type="button" title="edit risk tiers (display only, not on-chain)">⚙</button>
         <span class="ring" id="ring"></span>
         <span class="when" id="countdown"></span>
         <button class="ghost" id="refresh-btn" type="button">refresh</button>
@@ -603,7 +612,8 @@ function renderRules() {
     `<span class="sev e">elevated &lt;${RISK.high}×</span> · ` +
     `<span class="sev h">high ${RISK.high}–${RISK.crit}×</span> · ` +
     `<span class="sev c">critical ≥${RISK.crit}×</span>` +
-    ` <span style="color:#5c7488">· 3+ alerts/hour escalates one tier</span>`;
+    ` <span style="color:#5c7488">· 3+ alerts/hour escalates one tier</span>` +
+    ` <a href="#cfg" style="font-size:11px" onclick="document.getElementById('cfg').open=true">edit</a>`;
 }
 function avatarOf(addr) {
   let h = 0;
@@ -758,19 +768,20 @@ async function refresh(manual) {
 
 document.getElementById("refresh-btn").onclick = () => refresh(true);
 
-document.getElementById("gear").onclick = () => {
-  const h = prompt("high starts at how many × threshold?", String(RISK.high));
-  if (h === null) return;
-  const c = prompt("critical starts at how many × threshold?", String(RISK.crit));
-  if (c === null) return;
-  try {
-    localStorage.setItem("sentry_risk", JSON.stringify({
-      high: Number(h) || RISK.high,
-      crit: Number(c) || RISK.crit,
-    }));
-  } catch {}
+/* display rules live in the Settings panel; this page never writes on-chain state */
+function fillRuleInputs() {
+  const h = document.getElementById("cfg-high");
+  const c = document.getElementById("cfg-crit");
+  if (h) h.value = String(RISK.high);
+  if (c) c.value = String(RISK.crit);
+}
+document.getElementById("cfg-save-rules").onclick = () => {
+  const h = Number(document.getElementById("cfg-high").value) || RISK.high;
+  const c = Number(document.getElementById("cfg-crit").value) || RISK.crit;
+  try { localStorage.setItem("sentry_risk", JSON.stringify({ high: h, crit: c })); } catch {}
   location.reload();
 };
+fillRuleInputs();
 renderRules();
 
 /* ── configure panel: reads the token contract, then emits config + deploy command ── */
@@ -816,7 +827,6 @@ async function checkToken() {
     st.className = "status err"; st.textContent = "check failed: " + e.message; return null;
   }
 }
-document.getElementById("cfg-check").onclick = () => checkToken();
 document.getElementById("cfg-gen").onclick = async () => {
   const info = await checkToken();
   if (!info) return;
