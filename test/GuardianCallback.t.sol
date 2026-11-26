@@ -14,7 +14,7 @@ contract GuardianCallbackTest is Test {
     GuardianCallback callback;
 
     function setUp() public {
-        callback = new GuardianCallback(IPayable(PROXY), REACTIVE);
+        callback = new GuardianCallback(IPayable(payable(PROXY)), REACTIVE);
     }
 
     /// Happy path: the proxy delivers an alert from the authorized reactive contract.
