@@ -1,54 +1,40 @@
 # Sentry · 链上钱包哨兵
 
-> **监听指定钱包的 ERC-20 转出事件。单笔金额超过阈值时，由 Reactive 在目标链上自动执行告警——
-> 不需要自建服务器，也不需要托管私钥。**
->
-> **定位**：基于 Reactive Omni 的轻量级跨链告警中间件——只负责发现、记录、通知，
-> 不拦截交易、不触碰资金。
->
-> [English README](README.md)
+Sentry 监听被守护钱包的 ERC-20 转出。单笔金额超过配置的阈值时，由 Reactive 合约发起跨链回调，
+在目标链上记录一条告警，并由链下通知器推送给使用者。
 
-## 1. 它是什么
+它不需要自建服务器，也不需要托管私钥。
 
-```text
- Sepolia（源链）                  Lasna（Reactive）                  Sepolia（目标链）
- ────────────────                ─────────────────                  ──────────────────
- ERC-20 Transfer                 GuardianReactive.react()            GuardianCallback.onAlert()
- from = 被守护钱包      ──▶      value ≥ 阈值 ?                      emit Alert(value, originTxHash)
- value ≥ 阈值                    requestCallbackV_1_0   ─────────▶
-```
+<img src="docs/architecture.svg" alt="Sepolia 上的转账、Lasna 上的 Reactive 合约、Sepolia 上的回调" width="100%">
 
-核心价值：**告警由网络在链上完成，而不是你托管的机器人。**
+- 实时看板：https://artistlogic.github.io/guardian/
+- 代码仓库：https://github.com/artistlogic/guardian
+- 回调合约（Sepolia）：[`0xa070a801…abe0`](https://eth-sepolia.blockscout.com/address/0xa070a801f8cd3f844e41e672d9e42380485cabe0)
 
-<img src="docs/architecture.svg" alt="源链事件 → Lasna 上的 Reactive 合约 → 目标链回调" width="100%">
+## 1. 做什么
 
-**10 秒速览：** [实时看板](https://artistlogic.github.io/guardian/) ·
-[源交易](https://eth-sepolia.blockscout.com/tx/0x632fb41ed499697eef05a0b5638984dd8161dc4f1a3cf1422c6fe1fad2d8494c) ·
-[回调交易](https://eth-sepolia.blockscout.com/tx/0x3d673287f16d7a4e63526053c4061905360fe904ec615fca1d07fa343b7ce926)
+钱包发出一笔代币转账后，Sentry 判断它是否来自被守护地址、金额是否超过阈值。
+两者都满足时，在目标链写入一条告警并推送通知。整个过程在链上可查。
 
-### 解决的问题
-
-自托管钱包越来越多，但异常转出常发生在没人看屏幕的时候（深夜、出差、开会）。现有方案都有短板：
-
-| 方案 | 问题 |
+| Sentry 会做 | Sentry 不做 |
 |---|---|
-| 人工盯区块浏览器 | 不可持续，注意力成本高 |
-| 自建 Keeper 脚本 + 云服务器 | 要长期运维，私钥托管有风险 |
-| 付费监控服务 | 单价不透明，个人用户留存差 |
-| 钱包内置风控 | 规则由厂商定，不可自定义 |
+| 发现超过阈值的外流 | 拦截或回滚交易 |
+| 在目标链记录告警 | 转移或托管资金 |
+| 向使用者推送通知 | 替代多签与审批流程 |
 
-Reactive 把"监听 + 可靠发交易"交给网络，用户只需要定义"什么算异常、异常时做什么"。
+之所以做这个工具，是因为现有方式各有缺口：人工盯区块浏览器不可持续；
+自建 keeper 需要服务器和托管私钥；付费监控定价不透明；钱包内置风控遵循厂商规则。
 
-## 2. 演示证据
+## 2. 链上证据
 
-| 步骤 | 交易 |
+| 环节 | 交易 |
 |---|---|
-| ① 源链事件（D3RT `Transfer` 10 枚，Sepolia） | https://eth-sepolia.blockscout.com/tx/0x4fe9d51fb6c57e86852e61fac842e98901788b7949bafb918019cd1f3cb326ee |
-| ② Reactive `react()`（Lasna） | https://lasna.reactscan.net/tx/0x01960122654318f025145e87230d469243b9eb387cc3076f6c55a742720500c5 |
-| ③ 目标链回调（`Alert`，Sepolia） | https://eth-sepolia.blockscout.com/tx/0xe439ee83286ecc1222173317aadd28e6c104f4a5e9606106e8112e8ae3715371 |
-| 负例（1 D3RT，低于阈值，不触发） | https://eth-sepolia.blockscout.com/tx/0x99713085eab4f09c6e65980e0e8c97fb13125fa0e0ab52d3feb94f13f27931f4 |
+| 源链转出（10 D3RT，Sepolia） | https://eth-sepolia.blockscout.com/tx/0x632fb41ed499697eef05a0b5638984dd8161dc4f1a3cf1422c6fe1fad2d8494c |
+| Lasna 上的 `react()` | https://lasna.reactscan.net/tx/0x01960122654318f025145e87230d469243b9eb387cc3076f6c55a742720500c5 |
+| Sepolia 上的回调 `Alert` | https://eth-sepolia.blockscout.com/tx/0x3d673287f16d7a4e63526053c4061905360fe904ec615fca1d07fa343b7ce926 |
+| 低于阈值的转账（1 D3RT） | https://eth-sepolia.blockscout.com/tx/0x99713085eab4f09c6e65980e0e8c97fb13125fa0e0ab52d3feb94f13f27931f4 |
 
-**已部署合约**
+低于阈值的那笔没有产生告警：正例运行前 `alerts` 保持为 0。
 
 | 合约 | 链 | 地址 |
 |---|---|---|
@@ -56,152 +42,148 @@ Reactive 把"监听 + 可靠发交易"交给网络，用户只需要定义"什�
 | GuardianCallback | Sepolia (11155111) | `0xa070a801f8cd3f844e41e672d9e42380485cabe0` |
 | 被监控代币（D3RT） | Sepolia | `0x259d2fb64231d85e639d1074fa724bcdf29a4ed9` |
 
-**运行后读数**：`alerts = 1`、`totalValue = 10e18`、`count = 1`；
-负例运行后 `alerts` 保持为 0。
+运行后读数：`alerts = 1`、`totalValue = 10e18`、`count = 1`。
 
-> 测试网迭代过程中部署过多个版本，旧版本已 `pause()` 退订（链上可见），上表为当前版本。
+```text
+被守护钱包            Sepolia              Lasna                 Sepolia
+     │ 转出 10 D3RT      │                    │                     │
+     ├──────────────────▶│ Transfer           │                     │
+     │                   │ ──事件───────────▶ │ react()             │
+     │                   │                    │ 阈值与额度判断       │
+     │                   │                    ├──回调──────────────▶│ onAlert()
+     │                   │                    │                     │ emit Alert
+```
 
 ## 3. 工作原理
 
-- **订阅收窄**：`chainId + 代币地址 + topic0 + topic1(被守护钱包)`，只有"从该钱包转出"的转账会进入 `react()`。
-- **阈值判断**：`react()` 内判断，低于阈值直接 `return`（不 revert，回滚也要收费）。
-- **回调内容**：`(reactive, originChainId, originTxHash, value, alertIndex)`，第一个参数由代理注入。
-- **两道门锁**：`onlyServiceProvider`（只认回调代理）+ `onlyCallbackSender`（只认本项目授权的 reactive 合约）。
-- **防失控**：
-  - 订阅过滤 + 合约内校验，只在该触发时触发；
-  - `seen[txHash]` 去重，同一笔源交易只处理一次；
-  - 单笔金额封顶 + 累计封顶；`maxAlerts` 到顶自动退订；owner 可 `pause()`。
+订阅在网络层就做了收窄：`chainId + 代币 + topic0 + topic1(被守护钱包)`。
+只有从被守护钱包转出的转账会进入 `react()`。
 
-## 3b. 现在真的能跑的部分
+`react()` 按顺序判断：来源合约、日志类型、暂停状态、剩余告警额度、源交易是否已处理，
+最后是金额阈值与额度上限。不满足条件的直接返回——回滚同样要付费。
 
-**测试网上真实可点（见第 2 节）：**
+命中后向系统合约请求回调。payload 带回调函数选择器与告警数据；
+第一个参数由回调代理注入为发起请求的 reactive 合约地址，接收方据此校验来源。
 
-- 源链转账 → `react()` → 目标链 `Alert`，三笔交易均可验证
-- 低于阈值的转账被忽略（第 2 节负例）
-- 订阅过滤 `topic1 = 被守护钱包`；阈值、去重、单笔与累计上限
-- 13 个 Foundry 测试（`forge test -vv`），每次 push 自动跑 CI
-- 链下通知器把每条 `Alert` 推送到 ntfy 频道（网页/App 可看）
+回调函数有两道校验：`onlyServiceProvider` 只接受回调代理；
+`onlyCallbackSender` 只接受授权的 reactive 合约。
 
-**仅用于演示的部分：**
+额度控制：
 
-- 视频里的转账金额与时机是为录制挑选的；链上交易是真实的
-- 通知器演示时跑在笔记本上（生产环境应作为常驻服务）
+- 单笔金额上限；累计金额上限，达到后自动退订
+- 告警次数上限，达到后自动退订
+- owner 可调用 `pause()`
+- owner 可调用 `setThreshold()`，无需重新部署即可调整阈值
 
-## 3c. 踩过的坑（Hacky parts）
-
-- **回调 payload 必须带 4 字节函数选择器**：只用 `abi.encode(...)` 会导致目标合约无法分发，
-  react 交易成功但回调静默失败。
-- **合约变大后 `eth_estimateGas` 会失败**：部署时显式传 `--gas-limit`，并先给钱包充值。
-- **Reactive 合约不会"自动废弃"**：不退订就一直收事件、一直扣费；旧版本用 `pause()` 停掉（链上可见）。
-- **余额用尽会静默停服**（`debt > 0` 不报错，只是不再执行），恢复流程写在 5b 节。
-- **网络选择比代码更折腾**：公共 RPC 时通时断；Telegram API 在当前网络不可达，通知改用 ntfy。
-
-## 4. 怎么跑
-
-### 编译与测试
+## 4. 运行
 
 ```bash
 forge build
 forge test -vv
 ```
 
-### 部署（测试网）
+测试网部署：
 
 ```bash
-cp .env.example .env      # 填 PRIVATE_KEY、代币、被守护钱包、代理地址
+cp .env.example .env      # 填入 PRIVATE_KEY 与地址
 source .env && bash script/deploy.sh
 ```
 
-脚本会在 Lasna 部署 `GuardianReactive`（预充值）、在目标链部署 `GuardianCallback`（预充值），
-并绑定收件地址，最后打印两个合约地址。
+脚本会在 Lasna 部署 reactive 合约（预充值）、在目标链部署回调合约（预充值），并绑定接收地址，
+最后打印两个合约地址。
 
-### 触发一次
-
-从被守护钱包发一笔超过阈值的测试代币转账：
+触发一次：
 
 ```bash
 cast send "$TOKEN" "transfer(address,uint256)" 0x000000000000000000000000000000000000dEaD 10000000000000000000 \
   --rpc-url "$SEPOLIA_RPC_URL" --private-key "$PRIVATE_KEY"
 ```
 
-约 30–120 秒后 `react()` 触发、回调落到目标链。
-
-## 5. 边界（不解决什么）
-
-- 只能**发现并记录**，已经转出的资产无法撤销；
-- 本版本不自动转移资产（需要预授权额度，属于另一层设计）；
-- 企业级控制（多签、白名单、审批流、合规筛查）不在范围内。
-
-## 5b. 出问题怎么办
-
-| 出问题 | 会发生什么 | 怎么处理 |
-|---|---|---|
-| **Reactive 合约余额用完** | `debt > 0` → 系统**静默停服**（不报错，只是不动了） | `depositTo(合约)` 充值清零 debt，并持续监控 |
-| **目标链回调失败** | 代理照常收费并发 `CallbackFailure`，`count` 不增加 | 查目标合约 / `gasLimit` / 回调合约余额，处理后重新触发 |
-| **重复事件** | `seen[txHash]` 拦下 | 无需处理 |
-| **误触发** | 订阅过滤 + 阈值拦截 | 调整阈值 |
-| **金额过大** | 单笔封顶、累计到顶停止并退订 | 重新部署调整上限 |
-| **伪造回调** | 两道门锁拒绝 | 无需处理 |
+## 5. 验证
 
 ```bash
-# 欠费恢复三步
-cast call 0x8888888888888888888888888888888888888888 "debt(address)(uint256)" <合约>
-cast send 0x8888888888888888888888888888888888888888 "depositTo(address)" <合约> --value 1ether
-cast call <合约> "alerts()(uint256)"
+# Reactive 侧
+cast call <REACTIVE> "alerts()(uint256)"     --rpc-url https://lasna-rpc.rnk.dev/
+cast call <REACTIVE> "totalValue()(uint256)" --rpc-url https://lasna-rpc.rnk.dev/
+
+# 目标链侧
+cast call <CALLBACK> "count()(uint256)" --rpc-url https://ethereum-sepolia-rpc.publicnode.com
+
+# 事件
+cast logs --rpc-url https://lasna-rpc.rnk.dev/ --address <REACTIVE> "Alerted(uint256,uint256,uint256)"
+cast logs --rpc-url https://ethereum-sepolia-rpc.publicnode.com --address <CALLBACK> "Alert(address,uint256,uint256,uint256,uint256)"
 ```
 
 ## 6. 测试
 
 ```bash
-forge test -vv   # 13 passed
+forge test -vv
+# 13 passed
 ```
 
-| 测试 | 验证 |
+| 测试 | 验证内容 |
 |---|---|
-| `test_CountsOnce` | 正常路径，执行一次 |
-| `test_DuplicateIgnored` | 同一 txHash 只处理一次 |
-| `test_BelowThresholdIgnored` | 低于阈值忽略 |
-| `test_OnlySystem` | 非系统调用 revert |
-| `test_PerAlertCap` | 单笔封顶 |
-| `test_TotalCapStops` | 累计到顶停止 |
-| `test_PauseStops` | 暂停后不再处理 |
+| `test_CountsOnce` | 超阈值转账被处理一次 |
+| `test_BelowThresholdIgnored` | 低于阈值不处理 |
+| `test_OnlySystem` | 非系统合约调用回滚 |
+| `test_DuplicateIgnored` | 同一源交易只处理一次 |
+| `test_PerAlertCap` | 单笔金额封顶 |
+| `test_TotalCapStops` | 累计到上限停止 |
+| `test_PauseStops` | 暂停后不处理 |
 | `test_ThresholdConfigurable` | owner 可修改阈值 |
-| `test_SetThresholdOnlyOwner` | 非 owner 不能修改 |
-| `test_OnAlertHappyPath` | 代理投递回调正常计数 |
-| `test_OnAlertRejectsNonProxy` | 非代理直接调用被拒 |
-| `test_OnAlertRejectsWrongSender` | 只接受授权 reactive |
-| `test_OnAlertAccumulates` | 多次回调累计 |
+| `test_SetThresholdOnlyOwner` | 非 owner 不可修改 |
+| `test_OnAlertHappyPath` | 代理可正常投递告警 |
+| `test_OnAlertRejectsNonProxy` | 直接调用被拒 |
+| `test_OnAlertRejectsWrongSender` | 只接受授权合约 |
+| `test_OnAlertAccumulates` | 多次告警累计 |
 
-## 7. 链上验证
+## 7. 失败模式
+
+| 情况 | 会发生什么 | 处理方式 |
+|---|---|---|
+| Reactive 合约余额用尽 | `debt > 0`，执行停止且不报错 | `depositTo()` 清零欠款 |
+| 回调失败 | 代理照常收取本次费用并发出 `CallbackFailure`，`count` 不变 | 检查 `gasLimit`、目标合约与余额后重新触发 |
+| 重复事件 | 被 `seen[txHash]` 拒绝 | 无需处理 |
+| 噪音事件 | 被订阅与阈值过滤 | 调整阈值 |
+| 金额超过上限 | 封顶或停止并退订 | 重新部署并调整上限 |
+| 伪造回调 | 两道校验拒绝 | 无需处理 |
+
+欠费恢复：
 
 ```bash
-# Reactive 侧：react() 跑了吗？
-cast call <GUARDIAN_REACTIVE> "alerts()(uint256)"     --rpc-url https://lasna-rpc.rnk.dev/
-cast call <GUARDIAN_REACTIVE> "totalValue()(uint256)" --rpc-url https://lasna-rpc.rnk.dev/
-
-# 目标链侧：回调落了吗？
-cast call <GUARDIAN_CALLBACK> "count()(uint256)" --rpc-url https://ethereum-sepolia-rpc.publicnode.com
-
-# 事件
-cast logs --rpc-url https://lasna-rpc.rnk.dev/ --address <GUARDIAN_REACTIVE> "Alerted(uint256,uint256,uint256)"
-cast logs --rpc-url https://ethereum-sepolia-rpc.publicnode.com --address <GUARDIAN_CALLBACK> "Alert(address,uint256,uint256,uint256,uint256)"
+cast call 0x8888888888888888888888888888888888888888 "debt(address)(uint256)" <合约>
+cast send 0x8888888888888888888888888888888888888888 "depositTo(address)" <合约> --value 1ether
+cast call <合约> "alerts()(uint256)"
 ```
 
-第 2 节的交易即预期终态：源链转账 → Lasna 上 `react()` → 目标链 `Alert`。
+## 8. 范围与路线图
 
-## 8. AI 使用说明
+当前版本负责告警记录，不转移资金。
 
-以下部分使用了 AI 辅助起草（Claude/DeepSeek），并逐项验证：
+后续功能彼此独立、默认关闭：
+
+1. 响应动作：用户授权一笔有限额度，超过更高的行动阈值时触发转账。
+2. 白名单规则：转出到白名单之外的地址时提升风险等级。
+3. 人工兜底：超过硬上限时通知人，而不是动钱。
+
+这些功能需要第二个合约持有额度，与"只做告警"是不同的信任前提。
+告警本身没有这项要求，因此先上线。
+
+## 9. AI 辅助说明
+
+以下部分由 AI 辅助起草，并在使用前完成审阅与测试：
 
 | 部分 | AI 参与 | 验证方式 |
 |---|---|---|
-| 合约骨架与注释 | AI 起草，人工逐行审阅 | `forge build` + `forge test`（13 项）+ 链上实际运行 |
-| 测试 | AI 起草 | `forge test -vv` 全绿；逐条对照合约行为复核 |
-| README 结构 | AI 起草 | 所有命令均手工在测试网执行过 |
-| 第 2 节链上证据 | 真实交易产生 | 用 `cast` 与区块浏览器独立核对 |
+| 合约骨架与注释 | 起草，逐行审阅 | `forge build`、`forge test`（13 项）、链上运行 |
+| 测试 | 起草 | `forge test -vv` 通过，逐条对照合约行为 |
+| README | 起草 | 所有命令在测试网手工执行 |
+| 第 2 节证据 | 真实交易产生 | 用 `cast` 与区块浏览器回读 |
 
-第 2 节所有地址与交易哈希均来自真实部署与执行，没有模拟数据。
+第 2 节的地址与哈希均来自实际部署与转账。
 
-## 9. 安全说明
+## 10. 说明
 
-仅使用测试网（Sepolia / Lasna）。永远不要提交 `.env`。
+- 仅使用测试网：源链与目标链为 Sepolia，Reactive 侧为 Lasna。
+- 仓库不包含 `.env`。
+- 通知器是链下脚本，不属于合约部分。
