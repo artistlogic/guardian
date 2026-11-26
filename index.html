@@ -179,6 +179,39 @@
     background:linear-gradient(90deg,var(--accent),var(--accent2));
     box-shadow:0 0 12px rgba(84,200,255,.35);transition:width .5s ease}
   .item:hover .meter i{filter:brightness(1.15)}
+
+  /* risk tiers */
+  .kind{font:600 10px/1 ui-monospace,monospace;letter-spacing:.1em;text-transform:uppercase;
+    border-radius:5px;padding:2px 7px;border:1px solid transparent}
+  .kind.elevated{color:#ffd479;border-color:rgba(255,193,94,.4);background:rgba(255,193,94,.08)}
+  .kind.critical{color:#ff8f8f;border-color:rgba(255,94,94,.45);background:rgba(255,94,94,.08)}
+  .avatar{width:16px;height:16px;border-radius:50%;display:inline-block;vertical-align:-3px;
+    margin-right:8px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.08)}
+  .dayhead{display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;
+    padding:6px 0;color:var(--muted);font:600 11px/1 ui-monospace,monospace;letter-spacing:.12em;text-transform:uppercase}
+  .dayhead:hover{color:var(--fg)}
+  .dayhead .chev{transition:transform .18s;display:inline-block}
+  .dayhead.open .chev{transform:rotate(90deg)}
+  .dayhead .n{color:#5c7488;font-weight:500;letter-spacing:.04em;text-transform:none}
+  .daybody{overflow:hidden}
+  .daybody.hide{display:none}
+
+  /* risk tiers (3 levels) + journey */
+  .kind.high{color:#ffb86b;border-color:rgba(255,150,80,.42);background:rgba(255,150,80,.08)}
+  .jmbtn{font:600 10px/1 ui-monospace,monospace;letter-spacing:.08em;color:#6f8aa3;background:transparent;
+    border:1px solid var(--line);border-radius:6px;padding:3px 8px;cursor:pointer;margin-left:8px}
+  .jmbtn:hover{color:var(--accent);border-color:rgba(84,200,255,.4)}
+  .jm{display:none;margin-top:10px;padding:12px 14px;border:1px solid var(--line);border-radius:12px;
+    background:rgba(8,13,19,.6)}
+  .jm.open{display:block;animation:rise .18s ease both}
+  .jm .leg{display:grid;grid-template-columns:14px 1fr auto;gap:10px;align-items:center;padding:5px 0;font-size:12px}
+  .jm .leg .n{width:9px;height:9px;border-radius:50%;background:#2a4054;border:1px solid var(--line);justify-self:center}
+  .jm .leg.done .n{background:var(--accent);border-color:transparent;box-shadow:0 0 10px rgba(84,200,255,.5)}
+  .jm .leg span{color:var(--muted)}
+  .jm .leg b{color:var(--fg);font-weight:500}
+  .jm .leg em{color:#5c7488;font-style:normal;font-family:ui-monospace,monospace;font-size:11px}
+  .jm .sum{margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);color:var(--muted);font-size:12px}
+  .jm .sum b{color:var(--ok)}
 </style>
 </head>
 <body>
@@ -476,19 +509,36 @@ function dayKey(ts) {
   if (!ts) return "recent";
   return new Date(ts).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "2-digit" });
 }
+const THRESHOLD = 5n * 10n ** 18n;
+function sevOf(v) {
+  if (v >= THRESHOLD * 3n) return "critical";
+  if (v >= THRESHOLD * 2n) return "high";
+  return "elevated";
+}
+function avatarOf(addr) {
+  let h = 0;
+  for (const ch of addr.slice(2, 10)) h = (h * 31 + ch.charCodeAt(0)) % 360;
+  return `<span class="avatar" style="background:linear-gradient(135deg,hsl(${h} 68% 56%),hsl(${(h + 55) % 360} 68% 44%))"></span>`;
+}
 
 function cardOf(log) {
   const originTx = originOf(log);
   const v = valueOf(log);
   const pct = CURRENT_MAX > 0n ? Number((v * 100n) / CURRENT_MAX) : 0;
+  const sev = sevOf(v);
+  const exact = log.ts ? new Date(log.ts).toLocaleString() : "";
   return `<div class="item">
     <div class="row">
-      <span><span class="kind">outflow</span> <span class="amt">${fmt(v)} D3RT</span></span>
-      <span class="when">${ago(log.ts)}</span>
+      <span>${avatarOf(originTx)}<span class="kind ${sev}">${sev}</span> <span class="amt">${fmt(v)} D3RT</span></span>
+      <span class="when" title="${exact || "block time unavailable"}">${ago(log.ts)}</span>
     </div>
     <div class="hash"><span class="chip">origin</span><a href="${EXPLORER}${originTx}" target="_blank" rel="noreferrer">${originTx}</a><button class="copy" data-copy="${originTx}">copy</button></div>
     <div class="hash"><span class="chip">callback</span><a href="${EXPLORER}${log.txHash}" target="_blank" rel="noreferrer">${log.txHash}</a><button class="copy" data-copy="${log.txHash}">copy</button></div>
     <div class="meter"><i style="width:${pct}%"></i></div>
+    <div class="row" style="margin-top:9px">
+      <button class="jmbtn" data-jm data-origin="${originTx}" data-cb="${log.txHash}" data-ts="${log.ts || ""}">journey</button>
+    </div>
+    <div class="jm" data-jmbox="${log.txHash}"></div>
   </div>`;
 }
 
@@ -504,21 +554,24 @@ function renderList() {
     groups.get(k).push(log);
   }
   const keys = [...groups.keys()];
-  const visible = keys.slice(0, SHOWN_DAYS);
 
   let html = '<div class="log">';
-  for (const k of visible) {
-    html += `<div class="day">${k}</div>`;
-    html += groups.get(k).map(cardOf).join("");
-  }
+  keys.forEach((k, idx) => {
+    const open = idx === 0;
+    html += `<div class="dayhead ${open ? "open" : ""}" data-day="${k}"><span class="chev">›</span>${k}<span class="n">${groups.get(k).length}</span></div>`;
+    html += `<div class="daybody ${open ? "" : "hide"}" data-body="${k}">${groups.get(k).map(cardOf).join("")}</div>`;
+  });
   html += "</div>";
-  if (keys.length > visible.length) {
-    html += `<button class="older" id="older" type="button">Show older (${keys.length - visible.length} more days)</button>`;
-  }
   list.innerHTML = html;
 
-  const older = document.getElementById("older");
-  if (older) older.onclick = () => { SHOWN_DAYS = keys.length; renderList(); };
+  list.querySelectorAll(".dayhead").forEach((h) => {
+    h.onclick = () => {
+      const body = list.querySelector(`[data-body="${h.dataset.day}"]`);
+      if (!body) return;
+      const open = h.classList.toggle("open");
+      body.classList.toggle("hide", !open);
+    };
+  });
 
   document.getElementById("count").textContent = CURRENT.length;
   document.getElementById("total").textContent = fmt(total);
@@ -534,7 +587,48 @@ function renderList() {
   prevCount = CURRENT.length;
 }
 
+/* ── journey: origin → reactive → callback ── */
+const V2TX = "https://eth-sepolia.blockscout.com/api/v2/transactions/";
+const jmCache = new Map();
+
+async function txTime(hash) {
+  if (!hash) return null;
+  if (jmCache.has(hash)) return jmCache.get(hash);
+  try {
+    const r = await fetch(V2TX + hash);
+    if (!r.ok) throw new Error(String(r.status));
+    const j = await r.json();
+    const t = j.timestamp ? new Date(j.timestamp) : null;
+    jmCache.set(hash, t);
+    return t;
+  } catch { jmCache.set(hash, null); return null; }
+}
+const clock = (d) => (d ? d.toLocaleTimeString() : "n/a");
+
+async function openJourney(btn) {
+  const box = document.querySelector(`[data-jmbox="${btn.dataset.cb}"]`);
+  if (!box) return;
+  const open = box.classList.toggle("open");
+  if (!open || box.dataset.filled) return;
+
+  btn.textContent = "loading…";
+  const ot = await txTime(btn.dataset.origin);
+  const ct = btn.dataset.ts ? new Date(Number(btn.dataset.ts) * 1000) : await txTime(btn.dataset.cb);
+  const total = ot && ct ? Math.max(0, Math.round((ct - ot) / 1000)) : null;
+
+  box.innerHTML = `
+    <div class="leg done"><span class="n"></span><span><b>origin</b> · Sepolia transfer</span><em>${clock(ot)}</em></div>
+    <div class="leg"><span class="n"></span><span><b>reactive</b> · Lasna <em>(react() executes here)</em></span><em>—</em></div>
+    <div class="leg done"><span class="n"></span><span><b>callback</b> · Sepolia on-chain alert</span><em>${clock(ct)}</em></div>
+    <div class="sum">end-to-end: <b>${total !== null ? total + "s" : "n/a"}</b> from source transfer to recorded alert</div>`;
+
+  box.dataset.filled = "1";
+  btn.textContent = "journey";
+}
+
 document.getElementById("list").addEventListener("click", async (e) => {
+  const jb = e.target.closest("[data-jm]");
+  if (jb) { openJourney(jb); return; }
   const btn = e.target.closest(".copy");
   if (!btn) return;
   try {
