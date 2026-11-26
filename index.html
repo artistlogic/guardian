@@ -212,6 +212,32 @@
   .jm .leg em{color:#5c7488;font-style:normal;font-family:ui-monospace,monospace;font-size:11px}
   .jm .sum{margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);color:var(--muted);font-size:12px}
   .jm .sum b{color:var(--ok)}
+  .rules{font:11px/1.5 ui-monospace,Consolas,monospace;color:#6f8aa3;letter-spacing:.01em}
+  .rules b{color:var(--fg);font-weight:600}
+  .rules .sev{font-weight:600}
+  .rules .e{color:#ffd479}.rules .h{color:#ffb86b}.rules .c{color:#ff8f8f}
+  .gear{font-size:12px;color:#6f8aa3;background:transparent;border:1px solid var(--line);
+    border-radius:7px;padding:4px 8px;cursor:pointer}
+  .gear:hover{color:var(--accent);border-color:rgba(84,200,255,.4)}
+
+  /* configure panel */
+  .cfg{margin:18px 0 0;border:1px solid var(--line);border-radius:14px;background:rgba(15,23,34,.5)}
+  .cfg summary{cursor:pointer;padding:12px 16px;color:var(--muted);font-size:13px;list-style:none}
+  .cfg summary::-webkit-details-marker{display:none}
+  .cfg summary:hover{color:var(--fg)}
+  .cfg .body{padding:0 16px 16px;display:grid;gap:10px}
+  .cfg .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+  .cfg label{display:grid;gap:4px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+  .cfg input{background:#0a1119;border:1px solid var(--line);border-radius:8px;padding:8px 10px;
+    color:var(--fg);font:12px/1.4 ui-monospace,Consolas,monospace}
+  .cfg input:focus{outline:none;border-color:rgba(84,200,255,.45)}
+  .cfg .actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .cfg .status{font-size:12px;color:var(--muted)}
+  .cfg .status.ok{color:var(--ok)}
+  .cfg .status.err{color:#ff8f8f}
+  .cfg pre{margin:0;padding:12px;border:1px solid var(--line);border-radius:10px;background:#080d13;
+    overflow:auto;max-height:220px;font:12px/1.6 ui-monospace,Consolas,monospace;color:#cfe3f5}
+  .cfg .hint{font-size:11px;color:#5c7488}
 </style>
 </head>
 <body>
@@ -249,6 +275,25 @@
       <span>no server · no hosted key</span>
     </div>
 
+    <details class="cfg" id="cfg">
+      <summary>Configure a new Sentry instance →</summary>
+      <div class="body">
+        <div class="grid">
+          <label>token (ERC-20 on Sepolia)<input id="cfg-token" placeholder="0x…" value="0x259d2fb64231d85e639d1074fa724bcdf29a4ed9"></label>
+          <label>guarded wallet<input id="cfg-watch" placeholder="0x…" value=""></label>
+          <label>threshold (human units)<input id="cfg-threshold" value="5"></label>
+          <label>alert cap<input id="cfg-cap" value="5"></label>
+        </div>
+        <div class="actions">
+          <button class="ghost" id="cfg-check" type="button">check token</button>
+          <button class="ghost" id="cfg-gen" type="button">generate config</button>
+          <span class="status" id="cfg-status"></span>
+        </div>
+        <pre id="cfg-out" style="display:none"></pre>
+        <div class="hint">Checking reads the token contract from Sepolia. Generating produces a config file and the deploy command; the contracts are deployed by that command, not from this page.</div>
+      </div>
+    </details>
+
     <div class="stats">
       <div class="stat hi"><b id="count">–</b><span>alerts recorded</span><small>&nbsp;</small></div>
       <div class="stat"><b id="total">–</b><span>total flagged (D3RT)</span><small>&nbsp;</small></div>
@@ -260,7 +305,9 @@
     <h2>Watch log</h2>
     <div class="list-head">
       <span class="count" id="meta">–</span>
+      <span class="rules" id="rules"></span>
       <div class="refresh">
+        <button class="gear" id="gear" type="button" title="edit risk tiers">⚙</button>
         <span class="ring" id="ring"></span>
         <span class="when" id="countdown"></span>
         <button class="ghost" id="refresh-btn" type="button">refresh</button>
@@ -515,6 +562,7 @@ renderCode("react");
 
 /* ── list state: day-grouped watch log, copy buttons, refresh countdown ── */
 let CURRENT = [], SHOWN_DAYS = 2, nextAt = 0, prevCount = 0, CURRENT_MAX = 0n;
+const openJM = new Set(), jmHTML = new Map();
 
 function valueOf(log) { return log._value ? BigInt(log._value) : word(log.data, 2); }
 function originOf(log) { return log._origin || ("0x" + word(log.data, 1).toString(16).padStart(64, "0")); }
@@ -523,10 +571,36 @@ function dayKey(ts) {
   return new Date(ts).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "2-digit" });
 }
 const THRESHOLD = 5n * 10n ** 18n;
+
+/* risk tiers are configurable: ?high=2&crit=3 or the ⚙ button (saved in localStorage) */
+const RISK = (() => {
+  let high = 2, crit = 3;
+  try {
+    const q = new URLSearchParams(location.search);
+    const s = JSON.parse(localStorage.getItem("sentry_risk") || "{}");
+    high = Number(q.get("high") || s.high || 2);
+    crit = Number(q.get("crit") || s.crit || 3);
+  } catch {}
+  if (!(high > 1)) high = 2;
+  if (!(crit > high)) crit = high + 1;
+  return { high, crit };
+})();
+
 function sevOf(v) {
-  if (v >= THRESHOLD * 3n) return "critical";
-  if (v >= THRESHOLD * 2n) return "high";
+  const ratio = Number((v * 100n) / THRESHOLD) / 100;
+  if (ratio >= RISK.crit) return "critical";
+  if (ratio >= RISK.high) return "high";
   return "elevated";
+}
+
+function renderRules() {
+  const el = document.getElementById("rules");
+  if (!el) return;
+  el.innerHTML =
+    `risk = amount ÷ threshold(5 D3RT): ` +
+    `<span class="sev e">elevated &lt;${RISK.high}×</span> · ` +
+    `<span class="sev h">high ${RISK.high}–${RISK.crit}×</span> · ` +
+    `<span class="sev c">critical ≥${RISK.crit}×</span>`;
 }
 function avatarOf(addr) {
   let h = 0;
@@ -589,6 +663,14 @@ function renderList() {
     };
   });
 
+  // keep open journeys open across refreshes
+  openJM.forEach((cb) => {
+    const box = list.querySelector(`[data-jmbox="${cb}"]`);
+    if (!box) return;
+    box.classList.add("open");
+    if (jmHTML.has(cb)) { box.innerHTML = jmHTML.get(cb); box.dataset.filled = "1"; }
+  });
+
   document.getElementById("count").textContent = CURRENT.length;
   document.getElementById("total").textContent = fmt(total);
   document.getElementById("latest").textContent = CURRENT[0].ts ? ago(CURRENT[0].ts) : "–";
@@ -622,14 +704,17 @@ async function txTime(hash) {
 const clock = (d) => (d ? d.toLocaleTimeString() : "n/a");
 
 async function openJourney(btn) {
-  const box = document.querySelector(`[data-jmbox="${btn.dataset.cb}"]`);
+  const cb = btn.dataset.cb;
+  const box = document.querySelector(`[data-jmbox="${cb}"]`);
   if (!box) return;
   const open = box.classList.toggle("open");
-  if (!open || box.dataset.filled) return;
+  if (!open) { openJM.delete(cb); return; }
+  openJM.add(cb);
+  if (box.dataset.filled) return;
 
   btn.textContent = "loading…";
   const ot = await txTime(btn.dataset.origin);
-  const ct = btn.dataset.ts ? new Date(Number(btn.dataset.ts) * 1000) : await txTime(btn.dataset.cb);
+  const ct = btn.dataset.ts ? new Date(Number(btn.dataset.ts)) : await txTime(cb);
   const total = ot && ct ? Math.max(0, Math.round((ct - ot) / 1000)) : null;
 
   box.innerHTML = `
@@ -639,6 +724,7 @@ async function openJourney(btn) {
     <div class="sum">end-to-end: <b>${total !== null ? total + "s" : "n/a"}</b> from source transfer to recorded alert</div>`;
 
   box.dataset.filled = "1";
+  jmHTML.set(cb, box.innerHTML);
   btn.textContent = "journey";
 }
 
@@ -666,6 +752,98 @@ async function refresh(manual) {
 }
 
 document.getElementById("refresh-btn").onclick = () => refresh(true);
+
+document.getElementById("gear").onclick = () => {
+  const h = prompt("high starts at how many × threshold?", String(RISK.high));
+  if (h === null) return;
+  const c = prompt("critical starts at how many × threshold?", String(RISK.crit));
+  if (c === null) return;
+  try {
+    localStorage.setItem("sentry_risk", JSON.stringify({
+      high: Number(h) || RISK.high,
+      crit: Number(c) || RISK.crit,
+    }));
+  } catch {}
+  location.reload();
+};
+renderRules();
+
+/* ── configure panel: reads the token contract, then emits config + deploy command ── */
+async function rpcCall(method, params) {
+  const r = await fetch(RPC, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+  });
+  const j = await r.json();
+  if (j.error) throw new Error(j.error.message || "rpc error");
+  return j.result;
+}
+function decodeStr(hex) {
+  try {
+    const raw = hex.slice(2);
+    const len = parseInt(raw.slice(64, 128), 16);
+    const bytes = Uint8Array.from(raw.slice(128, 128 + len * 2).match(/../g).map((h) => parseInt(h, 16)));
+    return new TextDecoder().decode(bytes);
+  } catch { return "?"; }
+}
+async function checkToken() {
+  const st = document.getElementById("cfg-status");
+  st.className = "status"; st.textContent = "checking…";
+  const addr = document.getElementById("cfg-token").value.trim();
+  if (!/^0x[0-9a-fA-F]{40}$/.test(addr)) {
+    st.className = "status err"; st.textContent = "invalid address"; return null;
+  }
+  try {
+    const code = await rpcCall("eth_getCode", [addr, "latest"]);
+    if (!code || code === "0x") {
+      st.className = "status err"; st.textContent = "no contract at this address"; return null;
+    }
+    let sym = "?", dec = 18;
+    try { sym = decodeStr(await rpcCall("eth_call", [{ to: addr, data: "0x95d89b41" }, "latest"])); } catch {}
+    try {
+      const d = parseInt(await rpcCall("eth_call", [{ to: addr, data: "0x313ce567" }, "latest"]), 16);
+      if (Number.isFinite(d)) dec = d;
+    } catch {}
+    st.className = "status ok";
+    st.textContent = `contract found · symbol=${sym} · decimals=${dec}`;
+    return { addr, sym, dec };
+  } catch (e) {
+    st.className = "status err"; st.textContent = "check failed: " + e.message; return null;
+  }
+}
+document.getElementById("cfg-check").onclick = () => checkToken();
+document.getElementById("cfg-gen").onclick = async () => {
+  const info = await checkToken();
+  if (!info) return;
+  const watch = document.getElementById("cfg-watch").value.trim() || "0x...";
+  const thr = Number(document.getElementById("cfg-threshold").value) || 5;
+  const cap = Number(document.getElementById("cfg-cap").value) || 5;
+  const wei = BigInt(Math.round(thr * 10 ** info.dec)).toString();
+  const cfg = {
+    originChainId: 11155111,
+    token: info.addr,
+    guardedWallet: watch,
+    threshold: wei,
+    maxAlerts: cap,
+    destChainId: 11155111,
+    callbackProxy: "0xAa14d9Cd0f788Ca23d11805986C1d8bd035D23b4",
+  };
+  const out = [
+    "# config.json",
+    JSON.stringify(cfg, null, 2),
+    "",
+    "# deploy",
+    "cp .env.example .env   # fill PRIVATE_KEY",
+    "source .env && bash script/deploy.sh",
+    "",
+    "# notify (after deployment, with the new callback address)",
+    "CALLBACK_ADDR=<new address> python3 scripts/notify.py",
+  ].join("\n");
+  const pre = document.getElementById("cfg-out");
+  pre.style.display = "block";
+  pre.textContent = out;
+  try { await navigator.clipboard.writeText(out); } catch {}
+};
 setInterval(() => {
   const left = Math.max(0, Math.ceil((nextAt - Date.now()) / 1000));
   const cd = document.getElementById("countdown");
