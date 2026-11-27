@@ -18,9 +18,9 @@ alert on the destination chain and a notifier pushes it. No server, no hosted pr
 
 | Step | Transaction |
 |---|---|
-| origin transfer (10 D3RT) | https://eth-sepolia.blockscout.com/tx/0x632fb41ed499697eef05a0b5638984dd8161dc4f1a3cf1422c6fe1fad2d8494c |
+| origin transfer (10 D3RT) | https://eth-sepolia.blockscout.com/tx/0x4fe9d51fb6c57e86852e61fac842e98901788b7949bafb918019cd1f3cb326ee |
 | `react()` on Lasna | https://lasna.reactscan.net/tx/0x01960122654318f025145e87230d469243b9eb387cc3076f6c55a742720500c5 |
-| callback `Alert` | https://eth-sepolia.blockscout.com/tx/0x3d673287f16d7a4e63526053c4061905360fe904ec615fca1d07fa343b7ce926 |
+| callback `Alert` | https://eth-sepolia.blockscout.com/tx/0xe439ee83286ecc1222173317aadd28e6c104f4a5e9606106e8112e8ae3715371 |
 | below-threshold control (1 D3RT, no alert) | https://eth-sepolia.blockscout.com/tx/0x99713085eab4f09c6e65980e0e8c97fb13125fa0e0ab52d3feb94f13f27931f4 |
 
 | Contract | Chain | Address |
@@ -49,11 +49,15 @@ After the runs: `alerts = 1`, `totalValue = 10e18`, `count = 1`.
 forge build && forge test -vv          # 13 passing
 
 cp .env.example .env                   # fill PRIVATE_KEY, WATCH, TOKEN
-source .env && bash script/deploy.sh   # deploys both contracts, prints addresses
+bash script/deploy.sh                  # deploys both contracts, prints addresses
 
+source .env                            # makes the variables below available
 cast send "$TOKEN" "transfer(address,uint256)" 0x000000000000000000000000000000000000dEaD \
   10000000000000000000 --rpc-url "$SEPOLIA_RPC_URL" --private-key "$PRIVATE_KEY"
 ```
+
+The script reads `.env` itself. `--private-key` on a command line is acceptable for a funded test
+wallet only; for anything else use `cast wallet import` plus `--account`.
 
 ## Verify
 

@@ -5,28 +5,32 @@ of the notification differs.
 
 ## 1. Config file (self-hosted)
 
-The smallest integration is a config file and one script.
+Sentry is configured through one `.env` file, read by the deploy script:
 
-```json
-{
-  "originChainId": 11155111,
-  "token": "0x259d2fb64231d85e639d1074fa724bcdf29a4ed9",
-  "guardedWallet": "0x...",
-  "threshold": "5000000000000000000",
-  "maxAlerts": 5,
-  "maxPerAlert": "100000000000000000000",
-  "maxTotal": "200000000000000000000",
-  "destChainId": 11155111,
-  "callbackProxy": "0xAa14d9Cd0f788Ca23d11805986C1d8bd035D23b4"
-}
+```ini
+PRIVATE_KEY=0x...                                  # funded test wallet
+SEPOLIA_RPC_URL=https://ethereum-sepolia-rpc.publicnode.com
+LASNA_RPC_URL=https://lasna-rpc.rnk.dev/
+TOKEN=0x259d2fb64231d85e639d1074fa724bcdf29a4ed9   # ERC-20 on Sepolia
+WATCH=0x...                                        # guarded wallet
+CALLBACK_PROXY=0xAa14d9Cd0f788Ca23d11805986C1d8bd035D23b4
+
+# optional (defaults in script)
+THRESHOLD=5000000000000000000
+MAX_ALERTS=5
+MAX_PER=100000000000000000000
+MAX_TOTAL=200000000000000000000
 ```
 
 ```bash
-source .env && bash script/deploy.sh   # deploys reactive + callback, binds recipient
+cp .env.example .env      # fill in the values above
+bash script/deploy.sh     # deploys reactive + callback, prints both addresses
 ```
 
-The host application only needs to set the config and keep both contracts funded.
-It never holds a key that can move user funds; the callback contract can only record alerts.
+The host application only sets the config and keeps both contracts funded. It never holds a key that
+can move user funds; the callback contract can only record alerts.
+
+A future SDK would read the same fields from `config.json`; the current release reads `.env` only.
 
 ## 2. Webhook output
 

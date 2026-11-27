@@ -6,6 +6,13 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# Load .env if present, exporting every variable for this script.
+if [ -f .env ]; then
+  set -a
+  . ./.env
+  set +a
+fi
+
 : "${PRIVATE_KEY:?set PRIVATE_KEY}"
 : "${SEPOLIA_RPC_URL:?set SEPOLIA_RPC_URL}"
 : "${LASNA_RPC_URL:?set LASNA_RPC_URL}"
