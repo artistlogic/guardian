@@ -56,6 +56,10 @@
   .stat span{display:block;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.09em;margin-top:2px}
   .stat.hi b{color:var(--accent)}
   .stat small{color:var(--muted);font-size:11px}
+  .insight{margin:14px 0 0;color:var(--muted);font-size:12px;
+    font-family:ui-monospace,Consolas,monospace;letter-spacing:.01em}
+  .insight b{color:var(--fg);font-weight:600}
+  .insight .k{color:#5c7488}
 
   main{padding:6px 0 46px}
   h2{font-size:12px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);
@@ -91,6 +95,35 @@
   .foot-links{display:flex;gap:16px;flex-wrap:wrap}
   code{font-family:ui-monospace,Consolas,monospace;font-size:12px}
   @media(max-width:640px){header{padding-top:34px}.pill{display:none}}
+
+  /* ── design-system pass: typography, focus, motion, rhythm ── */
+  h1{letter-spacing:-.035em}
+  .lede{font-size:16.5px;line-height:1.7}
+  .stat b{font-variant-numeric:tabular-nums}
+  .hour, .when{font-variant-numeric:tabular-nums}
+  main h2{counter-increment:sec;scroll-margin-top:24px}
+  main h2:before{content:"0" counter(sec);color:#2f4356;font-family:ui-monospace,Consolas,monospace;
+    font-size:10px;letter-spacing:.1em;margin-right:2px}
+  main{counter-reset:sec}
+  .item, .btn, .ghost, .tab, .gear, .jmbtn{will-change:transform}
+  .item:hover{box-shadow:0 10px 30px rgba(0,0,0,.28)}
+  .btn:focus-visible,.ghost:focus-visible,.tab:focus-visible,.gear:focus-visible,
+  .jmbtn:focus-visible,.copy:focus-visible,.close:focus-visible,a:focus-visible{
+    outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
+  .btn.primary{box-shadow:0 6px 22px rgba(84,200,255,.18)}
+  .arch, .panel{border-color:rgba(255,255,255,.06)}
+  ::selection{background:rgba(84,200,255,.25)}
+  body::-webkit-scrollbar{width:10px}
+  body::-webkit-scrollbar-thumb{background:#1c2a38;border-radius:8px}
+  body::-webkit-scrollbar-thumb:hover{background:#26384a}
+  @media (prefers-reduced-motion: reduce){
+    *,*:before,*:after{animation-duration:.001ms !important;animation-iteration-count:1 !important;
+      transition-duration:.001ms !important;scroll-behavior:auto !important}
+  }
+  @media(max-width:520px){
+    .stats{grid-template-columns:1fr}
+    .cta .btn{flex:1 1 auto;justify-content:center}
+  }
 
   /* ── code ↔ effect panel ── */
   .panel{border:1px solid var(--line);border-radius:16px;overflow:hidden;
@@ -323,6 +356,8 @@
       <div class="stat"><b id="total">–</b><span>total flagged (D3RT)</span><small>&nbsp;</small></div>
       <div class="stat"><b id="latest">–</b><span>latest alert</span><small id="latest-exact"></small></div>
     </div>
+
+    <div class="insight" id="insight"></div>
   </header>
 
   <main>
@@ -438,10 +473,16 @@ const ago = (ts) => {
 };
 
 async function fromV2() {
-  const r = await fetch(V2);
-  if (!r.ok) throw new Error("v2 " + r.status);
-  const j = await r.json();
-  return (j.items || []).map((it) => ({ data: it.data, txHash: it.transaction_hash, ts: it.block_timestamp }));
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 5000);
+  try {
+    const r = await fetch(V2, { signal: ctl.signal });
+    if (!r.ok) throw new Error("v2 " + r.status);
+    const j = await r.json();
+    return (j.items || []).map((it) => ({ data: it.data, txHash: it.transaction_hash, ts: it.block_timestamp }));
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 const RPC_LIST = [
@@ -468,13 +509,10 @@ async function rpcPost(url, payload, ms = 8000) {
 }
 
 async function rpcTry(payload) {
-  for (const url of RPC_LIST) {
-    try {
-      const j = await rpcPost(url, payload);
-      if (j && !j.error) return j;
-    } catch {}
-  }
-  throw new Error("all rpc endpoints failed");
+  // race all endpoints; whichever answers first wins
+  const j = await Promise.any(RPC_LIST.map((url) => rpcPost(url, payload, 5000)));
+  if (j && !j.error) return j;
+  throw new Error("rpc error");
 }
 
 async function fromRpc() {
@@ -518,22 +556,66 @@ async function fromSnapshot() {
   }));
 }
 
+const CACHE_KEY = "sentry_logs_v1";
+
+function readCache() {
+  try {
+    const j = JSON.parse(localStorage.getItem(CACHE_KEY) || "null");
+    return j && Array.isArray(j.logs) && j.logs.length ? j : null;
+  } catch { return null; }
+}
+
+function writeCache(logs) {
+  try { localStorage.setItem(CACHE_KEY, JSON.stringify({ at: Date.now(), logs: logs.slice(0, 60) })); } catch {}
+}
+
 async function load() {
   const list = document.getElementById("list");
-  let logs = [], source = "live";
-  try { logs = await fromV2(); }
-  catch (e) {
-    try { logs = await fromRpc(); }
-    catch (e2) {
-      try { logs = await fromSnapshot(); source = "snapshot"; }
-      catch (e3) { list.innerHTML = `<div class="empty">Failed to load on-chain data.<br><small>${e.message} / ${e2.message} / ${e3.message}</small></div>`; return; }
+  const cached = readCache();
+  let logs = [], source = "live", ok = false;
+
+  // 1) paint instantly from the previous successful load
+  if (cached) {
+    CURRENT = cached.logs;
+    renderList();
+    document.getElementById("synced2").textContent =
+      "cached " + new Date(cached.at).toLocaleTimeString() + " · refreshing…";
+  }
+
+  // 2) live data: Blockscout and RPC race; both have their own timeouts
+  try {
+    logs = await Promise.any([fromV2(), fromRpc()]);
+    ok = true;
+  } catch {}
+
+  // 3) snapshot file as last resort
+  if (!ok) {
+    try { logs = await fromSnapshot(); source = "snapshot"; ok = true; }
+    catch (e3) {
+      if (!cached) {
+        list.innerHTML = `<div class="empty">Could not load on-chain data.<br><small>${e3.message}</small></div>`;
+      }
+      return;
     }
   }
-  document.getElementById("synced2").textContent =
-    "updated " + new Date().toLocaleTimeString() + " · source: " + source;
+
+  if (ok) {
+    writeCache(logs);
+    document.getElementById("synced2").textContent =
+      "updated " + new Date().toLocaleTimeString() + " · source: " + source;
+  }
 
   if (!logs.length) {
-    list.innerHTML = '<div class="empty">No alerts yet. Send a transfer from the guarded wallet.</div>';
+    if (!cached) {
+      list.innerHTML = `<div class="empty" style="text-align:left">
+        <b style="color:var(--fg)">No alerts recorded yet.</b>
+        <div class="hint" style="margin-top:10px;line-height:1.9">
+          1. deploy the reactive and callback contracts (<a href="https://github.com/artistlogic/guardian/blob/main/docs/INTEGRATION.md" target="_blank" rel="noreferrer">integration guide</a>)<br>
+          2. fund both contracts<br>
+          3. send a transfer above the threshold from the guarded wallet
+        </div>
+      </div>`;
+    }
     return;
   }
 
@@ -679,9 +761,10 @@ function cardOf(log) {
   const journey = log.ts
     ? `<div class="row" style="margin-top:9px">
          <button class="jmbtn" data-jm data-origin="${originTx}" data-cb="${log.txHash}" data-ts="${log.ts}">journey</button>
+         <button class="jmbtn" data-sum="${log.txHash}">copy summary</button>
        </div>
        <div class="jm" data-jmbox="${log.txHash}"></div>`
-    : "";
+    : `<div class="row" style="margin-top:9px"><button class="jmbtn" data-sum="${log.txHash}">copy summary</button></div>`;
   return `<div class="item">
     <div class="row">
       <span><span class="kind ${sev}">${sev}</span> <span class="amt">${fmt(v)} D3RT</span></span>
@@ -743,6 +826,22 @@ function renderList() {
     : "";
   document.getElementById("meta").textContent = `${CURRENT.length} alerts · ${keys.length} day(s)`;
 
+  // one-line insight (real numbers, no chart)
+  const now = Date.now();
+  const within = (l, ms) => l.ts && now - new Date(l.ts).getTime() <= ms;
+  const h24 = CURRENT.filter((l) => within(l, 864e5));
+  const d7 = CURRENT.filter((l) => within(l, 7 * 864e5));
+  const sum7 = d7.reduce((a, l) => a + valueOf(l), 0n);
+  const largest = CURRENT.reduce((m, l) => (valueOf(l) > m ? valueOf(l) : m), 0n);
+  const ins = document.getElementById("insight");
+  if (ins) {
+    ins.innerHTML =
+      `<span class="k">last 24h</span> <b>${h24.length}</b> alerts · ` +
+      `<span class="k">7d</span> <b>${d7.length}</b> alerts · ` +
+      `<b>${fmt(sum7)}</b> D3RT flagged · ` +
+      `<span class="k">largest</span> <b>${fmt(largest)}</b>`;
+  }
+
   if (CURRENT.length > prevCount && prevCount > 0) {
     const first = list.querySelector(".item");
     if (first) { first.classList.add("flash"); setTimeout(() => first.classList.remove("flash"), 1600); }
@@ -798,6 +897,28 @@ async function openJourney(btn) {
 document.getElementById("list").addEventListener("click", async (e) => {
   const jb = e.target.closest("[data-jm]");
   if (jb) { openJourney(jb); return; }
+
+  const sb = e.target.closest("[data-sum]");
+  if (sb) {
+    const log = CURRENT.find((l) => l.txHash === sb.dataset.sum);
+    if (!log) return;
+    const summary = JSON.stringify({
+      value: String(valueOf(log)),
+      severity: sevOf(valueOf(log)),
+      originTx: originOf(log),
+      callbackTx: log.txHash,
+      time: log.ts ? new Date(log.ts).toISOString() : null,
+      chain: "sepolia",
+    }, null, 2);
+    try {
+      await navigator.clipboard.writeText(summary);
+      const old = sb.textContent;
+      sb.textContent = "copied ✓";
+      setTimeout(() => { sb.textContent = old; }, 1200);
+    } catch {}
+    return;
+  }
+
   const btn = e.target.closest(".copy");
   if (!btn) return;
   try {
