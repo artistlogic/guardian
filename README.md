@@ -64,3 +64,4 @@ one wallet, one token, one threshold.
 
 Deployment keys live in `.env` (git-ignored); `.env.example` has placeholders only. Testnets only.
 Contract and test drafts used AI assistance; every command and transaction here was run and verified.
+Threat model and load behaviour: [docs/SECURITY.md](docs/SECURITY.md).
