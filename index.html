@@ -175,7 +175,8 @@
   .skel{height:76px;border-radius:14px;margin-bottom:11px;border:1px solid var(--line);
     background:linear-gradient(90deg,#0f1722 25%,#152131 37%,#0f1722 63%);background-size:400% 100%}
   @keyframes shimmer{0%{background-position:100% 0}100%{background-position:0 0}}
-  .item{animation:rise .18s ease both}
+  .item{opacity:1}
+  .log.first .item{animation:rise .18s ease both}
   @keyframes rise{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
   .item.flash{border-color:rgba(63,224,161,.55);
     box-shadow:0 0 0 1px rgba(63,224,161,.22),0 0 26px rgba(63,224,161,.10);
@@ -557,6 +558,12 @@ async function fromSnapshot() {
 }
 
 const CACHE_KEY = "sentry_logs_v1";
+let LAST_SIG = "";
+
+function sigOf(logs) {
+  if (!logs || !logs.length) return "0";
+  return logs.length + "|" + logs[0].txHash + "|" + logs[logs.length - 1].txHash;
+}
 
 function readCache() {
   try {
@@ -577,6 +584,7 @@ async function load() {
   // 1) paint instantly from the previous successful load
   if (cached) {
     CURRENT = cached.logs;
+    LAST_SIG = sigOf(cached.logs);
     renderList();
     document.getElementById("synced2").textContent =
       "cached " + new Date(cached.at).toLocaleTimeString() + " · refreshing…";
@@ -620,7 +628,11 @@ async function load() {
   }
 
   CURRENT = logs;
-  renderList();
+  const sig = sigOf(logs);
+  if (sig !== LAST_SIG) {
+    LAST_SIG = sig;
+    renderList();
+  }
 }
 
 const SNIPPETS = {
@@ -799,6 +811,8 @@ function renderList() {
     html += `<div class="daybody ${open ? "" : "hide"}" data-body="${k}">${groups.get(k).map(cardOf).join("")}</div>`;
   });
   html += "</div>";
+  const firstPaint = !list.querySelector(".item");
+  if (firstPaint) html = '<div class="log first">' + html.slice('<div class="log">'.length);
   list.innerHTML = html;
 
   list.querySelectorAll(".dayhead").forEach((h) => {
