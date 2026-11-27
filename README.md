@@ -6,62 +6,96 @@
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
 Watches ERC-20 outflows from one guarded wallet. Above the threshold, a reactive contract records an
-alert on the destination chain and a notifier pushes it. No server, no hosted key.
+alert on the destination chain and a notifier pushes it to the operator.
 
-**Live:** https://artistlogic.github.io/guardian/ · **Guide:** [docs/INTEGRATION.md](docs/INTEGRATION.md)
+No server to run. No private key to host. Every alert is a transaction.
+
+**Live dashboard:** https://artistlogic.github.io/guardian/ · **Integration guide:** [docs/INTEGRATION.md](docs/INTEGRATION.md)
 
 <img src="docs/architecture.svg" alt="Transfer on Sepolia, reactive contract on Lasna, callback on Sepolia" width="100%">
+
+## The scenario
+
+A self-custody wallet holds tokens. The dangerous moment is a transfer the owner did not expect:
+a compromised browser, a malicious approval, a stolen seed. The owner finds out hours later from a
+block explorer, or never.
+
+Existing ways to get told early all carry a cost:
+
+| Option | Rule runs where | What it costs you |
+|---|---|---|
+| watch an explorer yourself | a person | not sustainable |
+| self-hosted bot | your server | 24/7 ops + a key on the machine |
+| Tenderly Alerts / Alchemy Notify | vendor + your listener | you still own the infrastructure |
+| OpenZeppelin Defender Sentinels | vendor | enterprise-grade and heavy |
+| **Sentry** | **Reactive network** | **one subscription + one contract** |
+
+Sentry keeps the rule on-chain. The network watches, the contract decides, the callback records.
+You receive a notification instead of maintaining a machine.
 
 ## Proof
 
 | Step | Transaction |
 |---|---|
-| origin 10 D3RT | `0x4fe9d51f…326ee` · [Sepolia](https://eth-sepolia.blockscout.com/tx/0x4fe9d51fb6c57e86852e61fac842e98901788b7949bafb918019cd1f3cb326ee) |
-| `react()` | `0x01960122…500c5` · [Lasna](https://lasna.reactscan.net/tx/0x01960122654318f025145e87230d469243b9eb387cc3076f6c55a742720500c5) |
-| callback `Alert` | `0xe439ee83…715371` · [Sepolia](https://eth-sepolia.blockscout.com/tx/0xe439ee83286ecc1222173317aadd28e6c104f4a5e9606106e8112e8ae3715371) |
-| control 1 D3RT | `0x99713085…7931f4` · no alert |
+| origin transfer, 10 D3RT | `0x4fe9d51f…326ee` · [Sepolia](https://eth-sepolia.blockscout.com/tx/0x4fe9d51fb6c57e86852e61fac842e98901788b7949bafb918019cd1f3cb326ee) |
+| `react()` on Lasna | `0x01960122…500c5` · [Lasna](https://lasna.reactscan.net/tx/0x01960122654318f025145e87230d469243b9eb387cc3076f6c55a742720500c5) |
+| callback emits `Alert` | `0xe439ee83…715371` · [Sepolia](https://eth-sepolia.blockscout.com/tx/0xe439ee83286ecc1222173317aadd28e6c104f4a5e9606106e8112e8ae3715371) |
+| control: 1 D3RT | `0x99713085…7931f4` · no alert |
 
 Reactive `0xd9cda08b…7034` (Lasna) · Callback `0xa070a801…abe0` (Sepolia) · Token `0x259d2fb6…4ed9`
+After the first run: `alerts = 1`, `totalValue = 10e18`, `count = 1`.
 
 ## How it works
 
-1. The subscription narrows at the network layer: `chainId + token + topic0 + topic1(wallet)`.
+1. The subscription narrows at the network level: `chainId + token + topic0 + topic1(wallet)`.
 2. `react()` checks source, log type, pause, quota, `txHash` duplicate, then threshold and caps.
 3. A qualifying transfer requests a callback; the proxy injects the reactive address as first argument.
-4. The callback is guarded twice: `onlyServiceProvider` and `onlyCallbackSender`.
+4. The callback is guarded twice: `onlyServiceProvider` (proxy) and `onlyCallbackSender` (contract).
 
-## Run
+Limits: per-alert cap, total cap, alert-count cap (the caps unsubscribe), owner `pause()`,
+owner `setThreshold()`.
+
+## Run it
 
 ```bash
 forge build && forge test -vv          # 13 passing
+
 cp .env.example .env                   # PRIVATE_KEY, WATCH, TOKEN
-bash script/deploy.sh                  # deploys both contracts
+bash script/deploy.sh                  # deploys reactive + callback
+
 source .env && cast send "$TOKEN" "transfer(address,uint256)" \
   0x000000000000000000000000000000000000dEaD 10000000000000000000 \
   --rpc-url "$SEPOLIA_RPC_URL" --private-key "$PRIVATE_KEY"
 ```
 
+Verify:
+
+```bash
+cast call <REACTIVE> "alerts()(uint256)" --rpc-url https://lasna-rpc.rnk.dev/
+cast call <CALLBACK> "count()(uint256)"  --rpc-url https://ethereum-sepolia-rpc.publicnode.com
+```
+
 ## Engineering
 
-13 Foundry tests (threshold, dedupe, caps, pause, owner-only, callback guards), CI on every push.
+13 Foundry tests cover the normal path and the failure paths (threshold, dedupe, caps, pause,
+owner-only changes, callback guards). CI runs `forge build` and `forge test` on every push.
 
 | Failure | Effect | Recovery |
 |---|---|---|
 | reactive out of funds | `debt > 0`, silently stops | `depositTo()` |
 | callback fails | charged, `CallbackFailure`, `count` unchanged | fix and retrigger |
-| duplicate / forged | rejected | none |
+| duplicate or forged | rejected | none |
 
 ## Scope
 
-Records alerts; never moves funds. Next, opt-in only: allowlist-aware severity, daily digest,
-response action behind a user-approved allowance.
+This release records alerts. It does not block transfers, move funds or hold a key.
 
-Agents and SaaS tools (Tenderly, Defender Sentinels, Forta, Hypernative) assume a listener you host.
-Sentry puts the rule, the subscription and the alert on-chain. Scope is deliberately small:
-one wallet, one token, one threshold.
+Next, all opt-in: allowlist-aware severity (decode the recipient), a daily digest instead of pings,
+and a response action behind a user-approved allowance. The last one needs a second contract holding
+an allowance — a different trust decision, which is why alerting ships first.
 
 ## Notes
 
-Deployment keys live in `.env` (git-ignored); `.env.example` has placeholders only. Testnets only.
-Contract and test drafts used AI assistance; every command and transaction here was run and verified.
-Threat model and load behaviour: [docs/SECURITY.md](docs/SECURITY.md).
+Security model and load behaviour: [docs/SECURITY.md](docs/SECURITY.md).
+Keys live in `.env` (git-ignored); `.env.example` has placeholders only; testnets only.
+Drafts used AI assistance; every command and transaction above was executed and verified.
