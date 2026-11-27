@@ -8,6 +8,10 @@
 监听一个被守护钱包的 ERC-20 转出。超过阈值时，由 Reactive 合约在目标链记录告警并推送通知。
 不需要服务器，不需要托管私钥。
 
+链上有记录、能送到你手上、每一跳都可核验——不只是链上 emit 一个事件。
+
+**赛道 2 · Set It and Forget It** —— 个人自动化：不用托管服务器，不用托管私钥。
+
 **看板** https://artistlogic.github.io/guardian/ · **接入** [docs/INTEGRATION.md](docs/INTEGRATION.md) · **安全** [docs/SECURITY.md](docs/SECURITY.md)
 
 <img src="docs/architecture.svg" alt="Sepolia 转账、Lasna Reactive 合约、Sepolia 回调" width="100%">

@@ -8,6 +8,10 @@
 Watches ERC-20 outflows of one guarded wallet. Above the threshold, a reactive contract records an
 alert on the destination chain and a notifier pushes it. No server, no hosted key.
 
+On-chain record, delivered to you, and every hop verifiable — not only an event on a chain.
+
+**Track 2 · Set It and Forget It** — personal automation anyone can use: no server, no hosted key.
+
 **Live** https://artistlogic.github.io/guardian/ · **Guide** [docs/INTEGRATION.md](docs/INTEGRATION.md) · **Security** [docs/SECURITY.md](docs/SECURITY.md)
 
 <img src="docs/architecture.svg" alt="Transfer on Sepolia, reactive contract on Lasna, callback on Sepolia" width="100%">
