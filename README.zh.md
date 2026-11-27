@@ -91,9 +91,17 @@ cast call <CALLBACK> "count()(uint256)"      --rpc-url https://ethereum-sepolia-
 
 ## 相关工作
 
-Tenderly Alerts、OpenZeppelin Defender Sentinels、Forta、Hypernative、Hexagate 都假设监听程序运行在
-用户自己的基础设施里。Sentry 把订阅与回调放在链上执行，没有需要托管的监听进程，每条告警都可在
-区块浏览器核对。范围刻意更小：单个钱包、单个代币、单个阈值。
+| 工具 | 形态 | 规则运行在哪 | 开源 | 适用 |
+|---|---|---|---|---|
+| 人工盯区块浏览器 | 人 | 浏览器 | — | 临时检查 |
+| 自建 bot | 脚本 + VPS | 你的服务器 | 视实现 | 完全可控，但有运维负担 |
+| Tenderly Alerts、Alchemy Notify、QuickNode Streams | SaaS webhook | 厂商 + 你的监听器 | 否 | 有基础设施的团队 |
+| OpenZeppelin Defender Sentinels | SaaS 监控 + 动作 | 厂商 | 部分 | 企业运维 |
+| Forta、Hypernative、Hexagate | 检测网络 | 厂商 agent | 部分 | 安全团队 |
+| **Sentry（本项目）** | **链上规则 + 回调** | **Reactive 网络** | **是** | **单个钱包、零基础设施** |
+
+差别在于"规则住在哪"。前五行住在你要托管或订阅的东西里；这里是一条订阅加一个合约，
+每条告警都是一笔交易。范围刻意更小：单个钱包、单个代币、单个阈值。
 
 ## AI 辅助说明
 

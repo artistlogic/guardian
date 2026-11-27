@@ -97,10 +97,18 @@ why alerting ships first.
 
 ## Related work
 
-Tenderly Alerts, OpenZeppelin Defender Sentinels, Forta, Hypernative and Hexagate all assume a listener
-running in infrastructure the user controls. Sentry executes the subscription and the callback on-chain,
-so there is no listener to host and every alert is verifiable on an explorer. Scope is deliberately
-smaller: one wallet, one token, one threshold.
+| Tool | Form | Rule runs where | Open source | Fits |
+|---|---|---|---|---|
+| manual explorer watching | human | browser | — | ad-hoc checks |
+| self-hosted bot | script + VPS | your server | depends | full control, ops burden |
+| Tenderly Alerts, Alchemy Notify, QuickNode Streams | SaaS webhook | vendor + your listener | no | teams with infrastructure |
+| OpenZeppelin Defender Sentinels | SaaS monitor + actions | vendor | partial | enterprise ops |
+| Forta, Hypernative, Hexagate | detection networks | vendor agents | partial | security teams |
+| **Sentry (this repo)** | **on-chain rule + callback** | **Reactive network** | **yes** | **one wallet, no infrastructure** |
+
+The difference is where the rule lives. In the first five rows it lives in something you host or
+subscribe to; here it is a contract plus a subscription, and every alert is a transaction.
+Scope is deliberately smaller: one wallet, one token, one threshold.
 
 ## AI assistance
 
