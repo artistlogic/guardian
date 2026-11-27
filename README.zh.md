@@ -3,117 +3,62 @@
 ![Solidity](https://img.shields.io/badge/solidity-0.8.29-363636?logo=solidity&logoColor=white)
 ![Tests](https://img.shields.io/badge/tests-13%20passing-3ddc97)
 ![Reactive Omni](https://img.shields.io/badge/Reactive%20Omni-Lasna-54c8ff)
-![Dashboard](https://img.shields.io/badge/dashboard-live-8b7bff)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
-监听被守护钱包的 ERC-20 转出。超过阈值时，由 Reactive 合约在目标链记录告警，并由通知器推送。
-不需要自建服务器，也不需要托管私钥。
+监听一个被守护钱包的 ERC-20 转出。超过阈值时，由 Reactive 合约在目标链记录告警并推送通知。
+不需要服务器，也不需要托管私钥。
 
-**实时看板：** https://artistlogic.github.io/guardian/ ·
-**接入文档：** [docs/INTEGRATION.md](docs/INTEGRATION.md)
+**看板：** https://artistlogic.github.io/guardian/ · **接入：** [docs/INTEGRATION.md](docs/INTEGRATION.md)
 
 <img src="docs/architecture.svg" alt="Sepolia 转账、Lasna Reactive 合约、Sepolia 回调" width="100%">
 
-## 链上证据
+## 证据
 
 | 环节 | 交易 |
 |---|---|
-| 源链转出（10 D3RT） | https://eth-sepolia.blockscout.com/tx/0x4fe9d51fb6c57e86852e61fac842e98901788b7949bafb918019cd1f3cb326ee |
-| Lasna 上的 `react()` | https://lasna.reactscan.net/tx/0x01960122654318f025145e87230d469243b9eb387cc3076f6c55a742720500c5 |
-| 目标链回调 `Alert` | https://eth-sepolia.blockscout.com/tx/0xe439ee83286ecc1222173317aadd28e6c104f4a5e9606106e8112e8ae3715371 |
-| 负例（1 D3RT，不触发） | https://eth-sepolia.blockscout.com/tx/0x99713085eab4f09c6e65980e0e8c97fb13125fa0e0ab52d3feb94f13f27931f4 |
+| 源链转出 10 D3RT | `0x4fe9d51f…326ee` · [Sepolia](https://eth-sepolia.blockscout.com/tx/0x4fe9d51fb6c57e86852e61fac842e98901788b7949bafb918019cd1f3cb326ee) |
+| `react()` | `0x01960122…500c5` · [Lasna](https://lasna.reactscan.net/tx/0x01960122654318f025145e87230d469243b9eb387cc3076f6c55a742720500c5) |
+| 回调 `Alert` | `0xe439ee83…715371` · [Sepolia](https://eth-sepolia.blockscout.com/tx/0xe439ee83286ecc1222173317aadd28e6c104f4a5e9606106e8112e8ae3715371) |
+| 负例 1 D3RT | `0x99713085…7931f4` · 不触发 |
 
-| 合约 | 链 | 地址 |
-|---|---|---|
-| GuardianReactive | Lasna 5318007 | `0xd9cda08baac9de9cbe658e553a8fd7112c7f7034` |
-| GuardianCallback | Sepolia 11155111 | `0xa070a801f8cd3f844e41e672d9e42380485cabe0` |
-| D3RT 测试代币 | Sepolia | `0x259d2fb64231d85e639d1074fa724bcdf29a4ed9` |
-
-运行后读数：`alerts = 1`、`totalValue = 10e18`、`count = 1`。
+Reactive `0xd9cda08b…7034`（Lasna）· Callback `0xa070a801…abe0`（Sepolia）· 代币 `0x259d2fb6…4ed9`
 
 ## 工作原理
 
-- 订阅在网络层收窄：`chainId + 代币 + topic0 + topic1(被守护钱包)`。
-- `react()` 依次检查：来源合约、日志类型、暂停、额度、重复 `txHash`、阈值与上限。
-  不满足条件的直接返回（回滚同样要付费）。
-- 命中后请求回调；payload 带选择器，回调代理把 reactive 地址注入为第一个参数。
-- 回调两道校验：`onlyServiceProvider`（只认代理）与 `onlyCallbackSender`（只认授权合约）。
-- 额度：单笔上限、累计上限、次数上限（到限自动退订）、owner `pause()`、owner `setThreshold()`。
+1. 订阅在网络层收窄：`chainId + 代币 + topic0 + topic1(钱包)`
+2. `react()` 依次判断来源、日志类型、暂停、额度、`txHash` 去重、阈值与上限
+3. 命中后请求回调；代理把 reactive 地址注入第一个参数
+4. 回调双锁：`onlyServiceProvider` 与 `onlyCallbackSender`
 
-## 快速开始
+## 运行
 
 ```bash
 forge build && forge test -vv          # 13 passed
-
-cp .env.example .env                   # 填写 PRIVATE_KEY、WATCH、TOKEN
-bash script/deploy.sh                  # 部署两个合约并打印地址
-
-source .env                            # 让下面的变量可用
-cast send "$TOKEN" "transfer(address,uint256)" 0x000000000000000000000000000000000000dEaD \
-  10000000000000000000 --rpc-url "$SEPOLIA_RPC_URL" --private-key "$PRIVATE_KEY"
+cp .env.example .env                   # 填 PRIVATE_KEY、WATCH、TOKEN
+bash script/deploy.sh                  # 部署两个合约
+source .env && cast send "$TOKEN" "transfer(address,uint256)" \
+  0x000000000000000000000000000000000000dEaD 10000000000000000000 \
+  --rpc-url "$SEPOLIA_RPC_URL" --private-key "$PRIVATE_KEY"
 ```
 
-脚本会自行读取 `.env`。命令行里带 `--private-key` 只适合"充了值的测试钱包"；
-其它场景请用 `cast wallet import` + `--account`。
+## 工程
 
-## 验证
+13 个 Foundry 测试（阈值、去重、上限、暂停、owner 权限、回调双锁），每次 push 跑 CI。
 
-```bash
-cast call <REACTIVE> "alerts()(uint256)"     --rpc-url https://lasna-rpc.rnk.dev/
-cast call <REACTIVE> "totalValue()(uint256)" --rpc-url https://lasna-rpc.rnk.dev/
-cast call <CALLBACK> "count()(uint256)"      --rpc-url https://ethereum-sepolia-rpc.publicnode.com
-```
-
-## 测试
-
-`forge test -vv` → 13 passed：正常计数、低于阈值忽略、非系统调用拒绝、按 `txHash` 去重、
-单笔与累计上限、暂停后停止、owner 改阈值（非 owner 拒绝）、回调正常路径、拒绝非代理、
-拒绝错误发送方、多次累加。
-
-## 失败模式
-
-| 情况 | 影响 | 处理 |
+| 失败 | 影响 | 恢复 |
 |---|---|---|
-| reactive 余额用尽 | `debt > 0`，静默停止执行 | `depositTo()` 清零 |
-| 回调失败 | 照常收费并发出 `CallbackFailure`，`count` 不变 | 检查 gasLimit/目标/余额后重试 |
-| 重复事件 | 被 `seen[txHash]` 拒绝 | 无需处理 |
-| 伪造回调 | 两道校验拒绝 | 无需处理 |
+| reactive 余额用尽 | `debt > 0`，静默停止 | `depositTo()` |
+| 回调失败 | 照常收费、发出 `CallbackFailure`、`count` 不变 | 修复后重试 |
+| 重复 / 伪造 | 被拒绝 | 无需处理 |
 
-## 范围与路线图
+## 范围
 
-当前版本只记录告警，不转移资金。
+只记录告警，不转移资金。下一步均为可选：白名单感知、每日摘要、预授权额度下的响应动作。
 
-1. 响应动作：用户授权有限额度 + 更高的行动阈值时触发转账。
-2. 白名单规则：通知器解码 `Transfer` 接收方，陌生地址标记为更高风险（链下实现，不改合约）。
-3. 人工兜底：超过硬上限时通知人，而不是动钱。
+Tenderly、Defender Sentinels、Forta、Hypernative 等都假设监听器跑在用户自己的基础设施里。
+Sentry 把规则、订阅与告警都放在链上。范围刻意很小：一个钱包、一个代币、一个阈值。
 
-这些都需要第二个合约持有额度，与"只做告警"是不同的信任前提，因此告警先上线。
+## 说明
 
-## 相关工作
-
-| 工具 | 形态 | 规则运行在哪 | 开源 | 适用 |
-|---|---|---|---|---|
-| 人工盯区块浏览器 | 人 | 浏览器 | — | 临时检查 |
-| 自建 bot | 脚本 + VPS | 你的服务器 | 视实现 | 完全可控，但有运维负担 |
-| Tenderly Alerts、Alchemy Notify、QuickNode Streams | SaaS webhook | 厂商 + 你的监听器 | 否 | 有基础设施的团队 |
-| OpenZeppelin Defender Sentinels | SaaS 监控 + 动作 | 厂商 | 部分 | 企业运维 |
-| Forta、Hypernative、Hexagate | 检测网络 | 厂商 agent | 部分 | 安全团队 |
-| **Sentry（本项目）** | **链上规则 + 回调** | **Reactive 网络** | **是** | **单个钱包、零基础设施** |
-
-差别在于"规则住在哪"。前五行住在你要托管或订阅的东西里；这里是一条订阅加一个合约，
-每条告警都是一笔交易。范围刻意更小：单个钱包、单个代币、单个阈值。
-
-## AI 辅助说明
-
-| 部分 | AI 参与 | 验证方式 |
-|---|---|---|
-| 合约骨架与注释 | 起草，逐行审阅 | `forge build`、`forge test`（13 项）、链上运行 |
-| 测试 | 起草 | `forge test -vv` 通过 |
-| README 与文档 | 起草 | 所有命令在测试网手工执行 |
-| 链上证据 | 真实交易产生 | 用 `cast` 与区块浏览器回读 |
-
-## 安全说明
-
-- `.env` 已被 git 忽略，仓库中只有占位符版本的 `.env.example`。
-- 仅使用测试网（Sepolia、Lasna），不涉及真实资金。
-- 非测试用途建议使用 `cast wallet import`，不要明文保存私钥。
+部署密钥在 `.env`（已被 git 忽略），`.env.example` 只有占位符；仅测试网。
+合约与测试起草使用了 AI 辅助；本文件中的命令与交易均已实际运行验证。

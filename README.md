@@ -3,14 +3,12 @@
 ![Solidity](https://img.shields.io/badge/solidity-0.8.29-363636?logo=solidity&logoColor=white)
 ![Tests](https://img.shields.io/badge/tests-13%20passing-3ddc97)
 ![Reactive Omni](https://img.shields.io/badge/Reactive%20Omni-Lasna-54c8ff)
-![Dashboard](https://img.shields.io/badge/dashboard-live-8b7bff)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
-Watches ERC-20 outflows from a guarded wallet. Above a threshold, a reactive contract records an
-alert on the destination chain and a notifier pushes it. No server, no hosted private key.
+Watches ERC-20 outflows from one guarded wallet. Above the threshold, a reactive contract records an
+alert on the destination chain and a notifier pushes it. No server, no hosted key.
 
-**Live dashboard:** https://artistlogic.github.io/guardian/ ·
-**Integration guide:** [docs/INTEGRATION.md](docs/INTEGRATION.md)
+**Live:** https://artistlogic.github.io/guardian/ · **Guide:** [docs/INTEGRATION.md](docs/INTEGRATION.md)
 
 <img src="docs/architecture.svg" alt="Transfer on Sepolia, reactive contract on Lasna, callback on Sepolia" width="100%">
 
@@ -18,109 +16,51 @@ alert on the destination chain and a notifier pushes it. No server, no hosted pr
 
 | Step | Transaction |
 |---|---|
-| origin transfer (10 D3RT) | https://eth-sepolia.blockscout.com/tx/0x4fe9d51fb6c57e86852e61fac842e98901788b7949bafb918019cd1f3cb326ee |
-| `react()` on Lasna | https://lasna.reactscan.net/tx/0x01960122654318f025145e87230d469243b9eb387cc3076f6c55a742720500c5 |
-| callback `Alert` | https://eth-sepolia.blockscout.com/tx/0xe439ee83286ecc1222173317aadd28e6c104f4a5e9606106e8112e8ae3715371 |
-| below-threshold control (1 D3RT, no alert) | https://eth-sepolia.blockscout.com/tx/0x99713085eab4f09c6e65980e0e8c97fb13125fa0e0ab52d3feb94f13f27931f4 |
+| origin 10 D3RT | `0x4fe9d51f…326ee` · [Sepolia](https://eth-sepolia.blockscout.com/tx/0x4fe9d51fb6c57e86852e61fac842e98901788b7949bafb918019cd1f3cb326ee) |
+| `react()` | `0x01960122…500c5` · [Lasna](https://lasna.reactscan.net/tx/0x01960122654318f025145e87230d469243b9eb387cc3076f6c55a742720500c5) |
+| callback `Alert` | `0xe439ee83…715371` · [Sepolia](https://eth-sepolia.blockscout.com/tx/0xe439ee83286ecc1222173317aadd28e6c104f4a5e9606106e8112e8ae3715371) |
+| control 1 D3RT | `0x99713085…7931f4` · no alert |
 
-| Contract | Chain | Address |
-|---|---|---|
-| GuardianReactive | Lasna 5318007 | `0xd9cda08baac9de9cbe658e553a8fd7112c7f7034` |
-| GuardianCallback | Sepolia 11155111 | `0xa070a801f8cd3f844e41e672d9e42380485cabe0` |
-| D3RT test token | Sepolia | `0x259d2fb64231d85e639d1074fa724bcdf29a4ed9` |
-
-After the runs: `alerts = 1`, `totalValue = 10e18`, `count = 1`.
+Reactive `0xd9cda08b…7034` (Lasna) · Callback `0xa070a801…abe0` (Sepolia) · Token `0x259d2fb6…4ed9`
 
 ## How it works
 
-- Subscription is narrowed at the network level: `chainId + token + topic0 + topic1(guarded wallet)`.
-- `react()` checks source contract, log type, pause, quota, duplicate `txHash`, then threshold and caps.
-  Failing conditions return silently (a revert would still be billed).
-- A qualifying transfer requests a callback; the payload carries the callback selector, and the proxy
-  injects the reactive address as the first argument.
-- The callback is guarded twice: `onlyServiceProvider` (proxy only) and `onlyCallbackSender` (authorized
-  reactive only).
-- Limits: per-alert cap, total cap, alert count cap (both caps unsubscribe), owner `pause()`,
-  owner `setThreshold()`.
+1. The subscription narrows at the network layer: `chainId + token + topic0 + topic1(wallet)`.
+2. `react()` checks source, log type, pause, quota, `txHash` duplicate, then threshold and caps.
+3. A qualifying transfer requests a callback; the proxy injects the reactive address as first argument.
+4. The callback is guarded twice: `onlyServiceProvider` and `onlyCallbackSender`.
 
-## Quickstart
+## Run
 
 ```bash
 forge build && forge test -vv          # 13 passing
-
-cp .env.example .env                   # fill PRIVATE_KEY, WATCH, TOKEN
-bash script/deploy.sh                  # deploys both contracts, prints addresses
-
-source .env                            # makes the variables below available
-cast send "$TOKEN" "transfer(address,uint256)" 0x000000000000000000000000000000000000dEaD \
-  10000000000000000000 --rpc-url "$SEPOLIA_RPC_URL" --private-key "$PRIVATE_KEY"
+cp .env.example .env                   # PRIVATE_KEY, WATCH, TOKEN
+bash script/deploy.sh                  # deploys both contracts
+source .env && cast send "$TOKEN" "transfer(address,uint256)" \
+  0x000000000000000000000000000000000000dEaD 10000000000000000000 \
+  --rpc-url "$SEPOLIA_RPC_URL" --private-key "$PRIVATE_KEY"
 ```
 
-The script reads `.env` itself. `--private-key` on a command line is acceptable for a funded test
-wallet only; for anything else use `cast wallet import` plus `--account`.
+## Engineering
 
-## Verify
-
-```bash
-cast call <REACTIVE> "alerts()(uint256)"     --rpc-url https://lasna-rpc.rnk.dev/
-cast call <REACTIVE> "totalValue()(uint256)" --rpc-url https://lasna-rpc.rnk.dev/
-cast call <CALLBACK> "count()(uint256)"      --rpc-url https://ethereum-sepolia-rpc.publicnode.com
-```
-
-## Tests
-
-`forge test -vv` → 13 passing: counts once, ignores below-threshold, rejects non-system callers,
-dedupes by tx hash, enforces per-alert and total caps, stops after pause, allows owner threshold
-change (and rejects non-owner), callback happy path, rejects non-proxy, rejects wrong sender,
-accumulates alerts.
-
-## Failure modes
+13 Foundry tests (threshold, dedupe, caps, pause, owner-only, callback guards), CI on every push.
 
 | Failure | Effect | Recovery |
 |---|---|---|
-| reactive out of funds | `debt > 0`, execution stops silently | `depositTo()` clears debt |
-| callback fails | attempt is charged, `CallbackFailure` emitted, `count` unchanged | check gasLimit/target/funding, trigger again |
-| duplicate events | rejected by `seen[txHash]` | none |
-| forged callback | rejected by both guards | none |
+| reactive out of funds | `debt > 0`, silently stops | `depositTo()` |
+| callback fails | charged, `CallbackFailure`, `count` unchanged | fix and retrigger |
+| duplicate / forged | rejected | none |
 
-## Scope and roadmap
+## Scope
 
-This version records alerts; it does not move funds.
+Records alerts; never moves funds. Next, opt-in only: allowlist-aware severity, daily digest,
+response action behind a user-approved allowance.
 
-1. Response action behind a user-approved allowance and a higher action threshold.
-2. Allowlist rules: the notifier decodes the `Transfer` recipient and marks unknown recipients as
-   higher severity (off-chain, no contract change).
-3. Human-in-the-loop above a hard cap.
+Agents and SaaS tools (Tenderly, Defender Sentinels, Forta, Hypernative) assume a listener you host.
+Sentry puts the rule, the subscription and the alert on-chain. Scope is deliberately small:
+one wallet, one token, one threshold.
 
-These need a second contract holding an allowance — a different trust decision from alerting, which is
-why alerting ships first.
+## Notes
 
-## Related work
-
-| Tool | Form | Rule runs where | Open source | Fits |
-|---|---|---|---|---|
-| manual explorer watching | human | browser | — | ad-hoc checks |
-| self-hosted bot | script + VPS | your server | depends | full control, ops burden |
-| Tenderly Alerts, Alchemy Notify, QuickNode Streams | SaaS webhook | vendor + your listener | no | teams with infrastructure |
-| OpenZeppelin Defender Sentinels | SaaS monitor + actions | vendor | partial | enterprise ops |
-| Forta, Hypernative, Hexagate | detection networks | vendor agents | partial | security teams |
-| **Sentry (this repo)** | **on-chain rule + callback** | **Reactive network** | **yes** | **one wallet, no infrastructure** |
-
-The difference is where the rule lives. In the first five rows it lives in something you host or
-subscribe to; here it is a contract plus a subscription, and every alert is a transaction.
-Scope is deliberately smaller: one wallet, one token, one threshold.
-
-## AI assistance
-
-| Part | AI involvement | Verification |
-|---|---|---|
-| contract skeleton and comments | drafted, reviewed line by line | `forge build`, `forge test` (13), on-chain runs |
-| tests | drafted | `forge test -vv` passes |
-| README and docs | drafted | every command run manually on testnets |
-| §Proof evidence | produced by real transactions | read back with `cast` and explorers |
-
-## Security notes
-
-- `.env` is git-ignored and never committed; `.env.example` contains placeholders only.
-- Testnets only (Sepolia, Lasna). No real funds.
-- Prefer `cast wallet import` over plaintext keys for any non-test use.
+Deployment keys live in `.env` (git-ignored); `.env.example` has placeholders only. Testnets only.
+Contract and test drafts used AI assistance; every command and transaction here was run and verified.
