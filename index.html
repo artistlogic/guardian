@@ -566,6 +566,7 @@ async function fromSnapshot() {
     ts: it.ts ? new Date(it.ts * 1000).toISOString() : null,
     _value: it.value,
     _origin: it.originTx,
+    _originTs: it.originTs || null,
   }));
 }
 
@@ -785,7 +786,7 @@ function cardOf(log) {
   const exact = toDate(log.ts) ? toDate(log.ts).toLocaleString() : "";
   const journey = log.ts
     ? `<div class="row" style="margin-top:9px">
-         <button class="jmbtn" data-jm data-origin="${originTx}" data-cb="${log.txHash}" data-ts="${log.ts}">journey</button>
+         <button class="jmbtn" data-jm data-origin="${originTx}" data-origin-ts="${log._originTs || ""}" data-cb="${log.txHash}" data-ts="${log.ts}">journey</button>
          <button class="jmbtn" data-sum="${log.txHash}">copy summary</button>
        </div>
        <div class="jm" data-jmbox="${log.txHash}"></div>`
@@ -901,22 +902,47 @@ function renderList() {
   prevCount = CURRENT.length;
 }
 
-/* ── journey: origin → reactive → callback (times via RPC receipts) ── */
+/* ── journey: origin → reactive → callback (times via API, then RPC) ── */
+const V2TX = "https://eth-sepolia.blockscout.com/api/v2/transactions/";
 const jmCache = new Map();
+
+async function rpcResult(payload) {
+  for (const url of RPC_LIST) {
+    try {
+      const j = await rpcPost(url, payload, 6000);
+      if (j && j.result) return j.result;
+    } catch {}
+  }
+  return null;
+}
 
 async function txTime(hash) {
   if (!hash) return null;
   if (jmCache.has(hash)) return jmCache.get(hash);
+
+  // 1) Blockscout v2 (fast when reachable)
   try {
-    const rc = await rpcTry({
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 5000);
+    const r = await fetch(V2TX + hash, { signal: ctl.signal });
+    clearTimeout(timer);
+    if (r.ok) {
+      const j = await r.json();
+      const d = toDate(j.timestamp);
+      if (d) { jmCache.set(hash, d); return d; }
+    }
+  } catch {}
+
+  // 2) any RPC endpoint that answers with a real result
+  try {
+    const rc = await rpcResult({
       jsonrpc: "2.0", id: 1, method: "eth_getTransactionReceipt", params: [hash],
     });
-    const bn = rc.result && rc.result.blockNumber;
-    if (!bn) throw new Error("no receipt");
-    const blk = await rpcTry({
-      jsonrpc: "2.0", id: 1, method: "eth_getBlockByNumber", params: [bn, false],
+    if (!rc || !rc.blockNumber) throw new Error("no receipt");
+    const blk = await rpcResult({
+      jsonrpc: "2.0", id: 1, method: "eth_getBlockByNumber", params: [rc.blockNumber, false],
     });
-    const ts = blk.result && blk.result.timestamp;
+    const ts = blk && blk.timestamp;
     const d = ts ? new Date(parseInt(ts, 16) * 1000) : null;
     jmCache.set(hash, d);
     return d;
@@ -934,7 +960,7 @@ async function openJourney(btn) {
   if (box.dataset.filled) return;
 
   btn.textContent = "loading…";
-  const ot = await txTime(btn.dataset.origin);
+  const ot = toDate(btn.dataset.originTs) || (await txTime(btn.dataset.origin));
   const ct = toDate(btn.dataset.ts) || (await txTime(cb));
   const total = ot && ct ? Math.max(0, Math.round((ct - ot) / 1000)) : null;
 

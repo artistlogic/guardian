@@ -48,14 +48,27 @@ def main():
         logs.extend(part)
 
     items, blocks = [], {}
+    origin_ts = {}
     for log in logs:
         bn = log["blockNumber"]
         if bn not in blocks:
             b = rpc("eth_getBlockByNumber", [bn, False])
             blocks[bn] = int(b["timestamp"], 16)
+        origin_tx = "0x" + format(word(log["data"], 1), "064x")
+        if origin_tx not in origin_ts:
+            try:
+                rc = rpc("eth_getTransactionReceipt", [origin_tx])
+                obn = rc["blockNumber"] if rc else None
+                if obn and obn not in blocks:
+                    ob = rpc("eth_getBlockByNumber", [obn, False])
+                    blocks[obn] = int(ob["timestamp"], 16)
+                origin_ts[origin_tx] = blocks.get(obn) if obn else None
+            except Exception:
+                origin_ts[origin_tx] = None
         items.append({
             "callbackTx": log["transactionHash"],
-            "originTx": "0x" + format(word(log["data"], 1), "064x"),
+            "originTx": origin_tx,
+            "originTs": origin_ts.get(origin_tx),
             "value": str(word(log["data"], 2)),
             "ts": blocks[bn],
             "block": int(bn, 16),
