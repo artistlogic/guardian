@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -241,7 +241,7 @@
   .jmbtn:hover{color:var(--accent);border-color:rgba(84,200,255,.4)}
   .jm{display:none;margin-top:10px;padding:12px 14px;border:1px solid var(--line);border-radius:12px;
     background:rgba(8,13,19,.6)}
-  .jm.open{display:block;animation:rise .18s ease both}
+  .jm.open{display:block}
   .jm .leg{display:grid;grid-template-columns:14px 1fr auto;gap:10px;align-items:center;padding:5px 0;font-size:12px}
   .jm .leg .n{width:9px;height:9px;border-radius:50%;background:#2a4054;border:1px solid var(--line);justify-self:center}
   .jm .leg.done .n{background:var(--accent);border-color:transparent;box-shadow:0 0 10px rgba(84,200,255,.5)}
@@ -625,7 +625,18 @@ async function load() {
   }
 
   if (ok) {
-    writeCache(logs);
+    // normalize: dedupe by tx hash, newest first (v2 and RPC disagree on order)
+  const seenTx = new Set();
+  logs = logs
+    .filter((l) => l && l.txHash && !seenTx.has(l.txHash) && seenTx.add(l.txHash))
+    .sort((a, b) => {
+      const ta = toDate(a.ts) ? toDate(a.ts).getTime() : 0;
+      const tb = toDate(b.ts) ? toDate(b.ts).getTime() : 0;
+      if (ta !== tb) return tb - ta;
+      return (Number(b.block || 0) - Number(a.block || 0));
+    });
+
+  writeCache(logs);
     document.getElementById("synced2").textContent =
       "updated " + fmtTime(new Date()) + " · source: " + source;
   }
@@ -1015,12 +1026,20 @@ document.getElementById("list").addEventListener("click", async (e) => {
   } catch { btn.textContent = "n/a"; }
 });
 
+/* ?refresh=<seconds> controls auto refresh; 0 disables it (useful while recording) */
+const AUTO_REFRESH = (() => {
+  const v = new URLSearchParams(location.search).get("refresh");
+  if (v === null) return 30;
+  const n = Number(v);
+  return Number.isFinite(n) && n >= 0 ? n : 30;
+})();
+
 async function refresh(manual) {
   const btn = document.getElementById("refresh-btn");
   const ring = document.getElementById("ring");
   if (manual) { btn.disabled = true; ring.classList.add("on"); }
   await load();
-  nextAt = Date.now() + 20000;
+  nextAt = AUTO_REFRESH > 0 ? Date.now() + AUTO_REFRESH * 1000 : 0;
   if (manual) { btn.disabled = false; ring.classList.remove("on"); }
 }
 
@@ -1060,8 +1079,12 @@ document.getElementById("backdrop").onclick = closeSettings;
 window.addEventListener("keydown", (e) => { if (e.key === "Escape") closeSettings(); });
 
 setInterval(() => {
-  const left = Math.max(0, Math.ceil((nextAt - Date.now()) / 1000));
   const cd = document.getElementById("countdown");
+  if (AUTO_REFRESH === 0) {
+    if (cd) cd.textContent = "auto-refresh off";
+    return;
+  }
+  const left = Math.max(0, Math.ceil((nextAt - Date.now()) / 1000));
   if (cd) cd.textContent = left > 0 ? `next in ${left}s` : "refreshing…";
   if (left === 0) refresh(false);
 }, 1000);
