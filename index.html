@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -475,6 +475,10 @@ const toDate = (ts) => {
   const d = new Date(ts);
   return isNaN(d.getTime()) ? null : d;
 };
+const pad2 = (n) => String(n).padStart(2, "0");
+const fmtDate = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+const fmtTime = (d) => `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+const fmtDateTime = (d) => `${fmtDate(d)} ${fmtTime(d)}`;
 const ago = (ts) => {
   const d = toDate(ts);
   if (!d) return "unknown time";
@@ -482,7 +486,7 @@ const ago = (ts) => {
   if (s < 60) return `${s}s ago`;
   if (s < 3600) return `${Math.floor(s / 60)}m ago`;
   if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
-  return d.toLocaleDateString();
+  return fmtDate(d);
 };
 
 async function fromV2() {
@@ -600,7 +604,7 @@ async function load() {
     LAST_SIG = sigOf(cached.logs);
     renderList();
     document.getElementById("synced2").textContent =
-      "cached " + new Date(cached.at).toLocaleTimeString() + " · refreshing…";
+      "cached " + fmtTime(new Date(cached.at)) + " · refreshing…";
   }
 
   // 2) live data: Blockscout and RPC race; both have their own timeouts
@@ -623,7 +627,7 @@ async function load() {
   if (ok) {
     writeCache(logs);
     document.getElementById("synced2").textContent =
-      "updated " + new Date().toLocaleTimeString() + " · source: " + source;
+      "updated " + fmtTime(new Date()) + " · source: " + source;
   }
 
   if (!logs.length) {
@@ -733,7 +737,7 @@ function originOf(log) { return log._origin || ("0x" + word(log.data, 1).toStrin
 function dayKey(ts) {
   const d = toDate(ts);
   if (!d) return "recent";
-  return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "2-digit" });
+  return fmtDate(d);
 }
 const THRESHOLD = 5n * 10n ** 18n;
 let FREQ_1H = 0; // alerts within the last hour, computed on each render
@@ -783,7 +787,7 @@ function cardOf(log) {
   const v = valueOf(log);
   const pct = CURRENT_MAX > 0n ? Number((v * 100n) / CURRENT_MAX) : 0;
   const sev = sevOf(v);
-  const exact = toDate(log.ts) ? toDate(log.ts).toLocaleString() : "";
+  const exact = toDate(log.ts) ? fmtDateTime(toDate(log.ts)) : "";
   const journey = log.ts
     ? `<div class="row" style="margin-top:9px">
          <button class="jmbtn" data-jm data-origin="${originTx}" data-origin-ts="${log._originTs || ""}" data-cb="${log.txHash}" data-ts="${log.ts}">journey</button>
@@ -850,7 +854,7 @@ function renderList() {
   document.getElementById("total").textContent = fmt(total);
   document.getElementById("latest").textContent = CURRENT[0].ts ? ago(CURRENT[0].ts) : "–";
   document.getElementById("latest-exact").textContent = toDate(CURRENT[0].ts)
-    ? toDate(CURRENT[0].ts).toLocaleString()
+    ? fmtDateTime(toDate(CURRENT[0].ts))
     : "";
   document.getElementById("meta").textContent = `${CURRENT.length} alerts · ${keys.length} day(s)`;
 
@@ -881,7 +885,7 @@ function renderList() {
     const bars = days.map((d, i) => {
       const h = d.count ? Math.max(2, Math.round((d.count / max) * 18)) : 1;
       return `<rect x="${i * 9}" y="${20 - h}" width="6" height="${h}" rx="1.5"
-        fill="${d.count ? "#54c8ff" : "#1f2f3f"}"><title>${new Date(d.start).toLocaleDateString()} · ${d.count} alert(s)</title></rect>`;
+        fill="${d.count ? "#54c8ff" : "#1f2f3f"}"><title>${fmtDate(new Date(d.start))} · ${d.count} alert(s)</title></rect>`;
     }).join("");
     const spark = `<svg class="spark" width="63" height="22" viewBox="0 0 63 22"
       aria-label="alerts per day, last 7 days">${bars}</svg>`;
@@ -948,7 +952,7 @@ async function txTime(hash) {
     return d;
   } catch { jmCache.set(hash, null); return null; }
 }
-const clock = (d) => (d ? d.toLocaleTimeString() : "n/a");
+const clock = (d) => (d ? fmtTime(d) : "n/a");
 
 async function openJourney(btn) {
   const cb = btn.dataset.cb;
