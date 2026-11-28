@@ -142,8 +142,8 @@
   .tab:hover{color:var(--fg)}
   .tab[aria-selected="true"]{color:var(--fg);border-color:var(--line);background:rgba(84,200,255,.08)}
   .kbd{margin-left:auto;color:#526a80;font:11px/1 ui-monospace,monospace;letter-spacing:.08em}
-  .panel pre{margin:0;padding:16px 18px 20px;overflow:auto;max-height:340px}
-  .panel code{font:13px/1.75 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre;display:block}
+  .panel pre{margin:0;padding:16px 18px 20px;overflow:auto;max-height:460px}
+  .panel code{font:11.5px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre;display:block}
   .ln{color:#41566b;user-select:none;display:inline-block;width:2.2em;text-align:right;margin-right:14px}
   .kw{color:#c792ea}.fn{color:#82aaff}.num{color:#f78c6c}.cm{color:#637777;font-style:italic}
   .st{color:#c3e88d}.var{color:#eaf1f9}.ty{color:#ffcb6b}
@@ -667,29 +667,33 @@ const SNIPPETS = {
   react: {
     title: "Watch → decide → request",
     code: [
-`<span class="cm">// 1) cheap exits first: wrong source, wrong log type</span>`,
+`<span class="cm">// trimmed: pause/quota/recipient, per-alert cap, events</span>`,
 `<span class="kw">function</span> <span class="fn">react</span>(LogRecord calldata log_) <span class="kw">external</span> onlySystem {`,
 `    <span class="kw">if</span> (log_.contractAddress != token) <span class="kw">return</span>;`,
 `    <span class="kw">if</span> (log_.opCode != <span class="num">3</span>) <span class="kw">return</span>;`,
+`    <span class="kw">if</span> (paused || alerts &gt;= maxAlerts) <span class="kw">return</span>;`,
 ``,
-`    <span class="cm">// 2) business rules: threshold, dedupe, caps</span>`,
+`    <span class="kw">if</span> (seen[log_.txHash]) <span class="kw">return</span>;          <span class="cm">// handled once</span>`,
 `    uint256 value = abi.<span class="fn">decode</span>(log_.data, (uint256));`,
-`    <span class="kw">if</span> (value &lt; threshold) <span class="kw">return</span>;`,
-`    <span class="kw">if</span> (seen[log_.txHash]) <span class="kw">return</span>;`,
+`    <span class="kw">if</span> (value &lt; threshold) <span class="kw">return</span>;          <span class="cm">// silent exit</span>`,
 ``,
-`    <span class="cm">// 3) ask the system contract to deliver the callback</span>`,
 `    bytes memory payload = abi.<span class="fn">encodeWithSelector</span>(`,
 `        GuardianCallback.onAlert.<span class="fn">selector</span>,`,
-`        <span class="kw">address</span>(<span class="num">0</span>), log_.chainId, log_.txHash, effective, alerts`,
+`        <span class="kw">address</span>(<span class="num">0</span>), log_.chainId, log_.txHash, value, alerts + <span class="num">1</span>`,
 `    );`,
-`    SYSTEM.<span class="fn">requestCallbackV_1_0</span>(config);`,
+``,
+`    SYSTEM.<span class="fn">requestCallbackV_1_0</span>(`,
+`        ISystemContract.CallbackConfiguration_V_1_0(`,
+`            destChainId, recipient, gasLimit, payload`,
+`        )`,
+`    );`,
 `}`,
     ],
     trace: [
-      "Every matching log lands here — and nothing else does.",
+      "Only matching logs arrive; pause, quota and cap checks are trimmed in this view.",
       "Below-threshold transfers exit with <b>return</b> (a revert would still be billed).",
       "The same <b>txHash</b> can never be processed twice.",
-      "The payload carries the 4-byte selector so the proxy can dispatch it.",
+      "The payload carries the 4-byte selector, and the proxy injects the reactive address.",
     ],
   },
   onalert: {
@@ -703,6 +707,7 @@ const SNIPPETS = {
 `    <span class="cm">// both locks already passed: the proxy, and our reactive contract</span>`,
 `    count += <span class="num">1</span>;`,
 `    lastValue = value_;`,
+`    lastOriginTx = originTxHash_;`,
 `    <span class="kw">emit</span> Alert(reactive_, chainId_, originTxHash_, value_, alertIndex_);`,
 `}`,
     ],
