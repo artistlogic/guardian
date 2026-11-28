@@ -467,13 +467,22 @@ document.getElementById("addr-t").textContent = TOKEN.slice(0, 8) + "…";
 
 const word = (data, i) => BigInt("0x" + data.slice(2 + i * 64, 2 + (i + 1) * 64));
 const fmt = (v) => (Number(BigInt(v) / 10n ** (DECIMALS - 4n)) / 1e4).toFixed(4);
+const toDate = (ts) => {
+  if (ts === null || ts === undefined || ts === "") return null;
+  if (typeof ts === "number") return new Date(ts < 1e12 ? ts * 1000 : ts);
+  const n = Number(ts);
+  if (Number.isFinite(n)) return new Date(n < 1e12 ? n * 1000 : n);
+  const d = new Date(ts);
+  return isNaN(d.getTime()) ? null : d;
+};
 const ago = (ts) => {
-  if (!ts) return "unknown time";
-  const s = Math.floor((Date.now() - new Date(ts).getTime()) / 1000);
+  const d = toDate(ts);
+  if (!d) return "unknown time";
+  const s = Math.floor((Date.now() - d.getTime()) / 1000);
   if (s < 60) return `${s}s ago`;
   if (s < 3600) return `${Math.floor(s / 60)}m ago`;
   if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
-  return new Date(ts).toLocaleDateString();
+  return d.toLocaleDateString();
 };
 
 async function fromV2() {
@@ -721,8 +730,9 @@ const openJM = new Set(), jmHTML = new Map();
 function valueOf(log) { return log._value ? BigInt(log._value) : word(log.data, 2); }
 function originOf(log) { return log._origin || ("0x" + word(log.data, 1).toString(16).padStart(64, "0")); }
 function dayKey(ts) {
-  if (!ts) return "recent";
-  return new Date(ts).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "2-digit" });
+  const d = toDate(ts);
+  if (!d) return "recent";
+  return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "2-digit" });
 }
 const THRESHOLD = 5n * 10n ** 18n;
 let FREQ_1H = 0; // alerts within the last hour, computed on each render
@@ -772,7 +782,7 @@ function cardOf(log) {
   const v = valueOf(log);
   const pct = CURRENT_MAX > 0n ? Number((v * 100n) / CURRENT_MAX) : 0;
   const sev = sevOf(v);
-  const exact = log.ts ? new Date(log.ts).toLocaleString() : "";
+  const exact = toDate(log.ts) ? toDate(log.ts).toLocaleString() : "";
   const journey = log.ts
     ? `<div class="row" style="margin-top:9px">
          <button class="jmbtn" data-jm data-origin="${originTx}" data-cb="${log.txHash}" data-ts="${log.ts}">journey</button>
@@ -838,8 +848,8 @@ function renderList() {
   document.getElementById("count").textContent = CURRENT.length;
   document.getElementById("total").textContent = fmt(total);
   document.getElementById("latest").textContent = CURRENT[0].ts ? ago(CURRENT[0].ts) : "–";
-  document.getElementById("latest-exact").textContent = CURRENT[0].ts
-    ? new Date(CURRENT[0].ts).toLocaleString()
+  document.getElementById("latest-exact").textContent = toDate(CURRENT[0].ts)
+    ? toDate(CURRENT[0].ts).toLocaleString()
     : "";
   document.getElementById("meta").textContent = `${CURRENT.length} alerts · ${keys.length} day(s)`;
 
@@ -891,20 +901,25 @@ function renderList() {
   prevCount = CURRENT.length;
 }
 
-/* ── journey: origin → reactive → callback ── */
-const V2TX = "https://eth-sepolia.blockscout.com/api/v2/transactions/";
+/* ── journey: origin → reactive → callback (times via RPC receipts) ── */
 const jmCache = new Map();
 
 async function txTime(hash) {
   if (!hash) return null;
   if (jmCache.has(hash)) return jmCache.get(hash);
   try {
-    const r = await fetch(V2TX + hash);
-    if (!r.ok) throw new Error(String(r.status));
-    const j = await r.json();
-    const t = j.timestamp ? new Date(j.timestamp) : null;
-    jmCache.set(hash, t);
-    return t;
+    const rc = await rpcTry({
+      jsonrpc: "2.0", id: 1, method: "eth_getTransactionReceipt", params: [hash],
+    });
+    const bn = rc.result && rc.result.blockNumber;
+    if (!bn) throw new Error("no receipt");
+    const blk = await rpcTry({
+      jsonrpc: "2.0", id: 1, method: "eth_getBlockByNumber", params: [bn, false],
+    });
+    const ts = blk.result && blk.result.timestamp;
+    const d = ts ? new Date(parseInt(ts, 16) * 1000) : null;
+    jmCache.set(hash, d);
+    return d;
   } catch { jmCache.set(hash, null); return null; }
 }
 const clock = (d) => (d ? d.toLocaleTimeString() : "n/a");
@@ -920,7 +935,7 @@ async function openJourney(btn) {
 
   btn.textContent = "loading…";
   const ot = await txTime(btn.dataset.origin);
-  const ct = btn.dataset.ts ? new Date(Number(btn.dataset.ts)) : await txTime(cb);
+  const ct = toDate(btn.dataset.ts) || (await txTime(cb));
   const total = ot && ct ? Math.max(0, Math.round((ct - ot) / 1000)) : null;
 
   box.innerHTML = `
