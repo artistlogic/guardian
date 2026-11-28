@@ -40,6 +40,9 @@ all require something you host or subscribe to:
 
 Reactive `0xd9cda08b…7034` (Lasna) · Callback `0xa070a801…abe0` (Sepolia) · Token `0x259d2fb6…4ed9`
 
+**Measured (one run, block timestamps):** end-to-end 12 s — origin 1795526832 → callback 1795526844;
+callback gas 404,464 (≈0.0000085 ETH at 21 wei/gas), `react()` gas 203,930.
+
 ## How it works
 
 1. Subscription narrows at the network layer: `chainId + token + topic0 + topic1(wallet)`.

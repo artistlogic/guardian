@@ -39,6 +39,9 @@
 
 Reactive `0xd9cda08b…7034`（Lasna）· Callback `0xa070a801…abe0`（Sepolia）· 代币 `0x259d2fb6…4ed9`
 
+**实测（一次运行，按区块时间戳）**：端到端 12 秒（源 1795526832 → 回调 1795526844）；
+回调 gas 404,464（21 wei/gas 下约 0.0000085 ETH），`react()` gas 203,930。
+
 ## 工作原理
 
 1. 订阅在网络层收窄：`chainId + 代币 + topic0 + topic1(钱包)`
